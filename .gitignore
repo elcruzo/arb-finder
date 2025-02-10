@@ -1,0 +1,153 @@
+# Rust build artifacts
+/target/
+**/target/
+Cargo.lock
+*.pdb
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+*.ipynb_checkpoints
+
+# Configuration and secrets
+config/production.toml
+config/secrets.toml
+.env
+.env.local
+.env.production
+*.pem
+*.key
+*.crt
+api_keys.txt
+secrets/
+
+# Logs and runtime data
+*.log
+logs/
+*.out
+*.pid
+*.seed
+*.pid.lock
+.nyc_output
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Data files
+data/
+*.csv
+*.parquet
+*.arrow
+backups/
+dumps/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.temp
+*.cache
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Docker
+.dockerignore
+docker-compose.override.yml
+
+# Kubernetes secrets
+k8s/secrets/
+*.yaml.bak
+
+# Benchmarking results
+criterion/
+bench_results/
+flamegraph.svg
+perf.data*
+
+# Coverage reports
+target/coverage/
+lcov.info
+*.profraw
+
+# Generated documentation
+docs/build/
+docs/_build/
+
+# Jupyter notebook outputs
+.ipynb_checkpoints/
+notebooks/.ipynb_checkpoints/
+
+# Backup files
+*.bak
+*.backup
+*.orig
+
+# System files
+.fuse_hidden*
+.nfs*
+
+# Exchange API credentials
+binance_api.toml
+coinbase_api.toml
+kraken_api.toml
+exchange_credentials/
+
+# Runtime configuration
+runtime/
+pid/
+sockets/
+
+# Monitoring data
+prometheus_data/
+grafana_data/
+metrics/
+
+# Test artifacts
+test_results/
+test_data/
+mock_data/
+fixtures/generated/

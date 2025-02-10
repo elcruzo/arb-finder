@@ -1,0 +1,89 @@
+# ArbFinder Configuration File
+# Copy this file and customize it with your exchange credentials
+
+[execution]
+# Enable paper trading mode (no real trades)
+enable_paper_trading = true
+
+# Maximum position size per trade (in USD)
+max_position_size = 1000.0
+
+# Minimum profit threshold (in percentage)
+min_profit_threshold = 0.5
+
+# Maximum number of concurrent orders
+max_concurrent_orders = 10
+
+# Order timeout in seconds
+order_timeout_seconds = 30
+
+[monitoring]
+# Log level: trace, debug, info, warn, error
+log_level = "info"
+
+# Enable metrics collection
+enable_metrics = true
+
+# Metrics server port
+metrics_port = 9090
+
+# Enable file logging
+enable_file_logging = true
+
+# Log file path
+log_file_path = "logs/arbfinder.log"
+
+# Enable alerts
+enable_alerts = true
+
+# Webhook URL for alerts (optional)
+# alert_webhook_url = "https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK"
+
+[exchanges.binance]
+# Binance API credentials
+# api_key = "your_binance_api_key"
+# api_secret = "your_binance_api_secret"
+# sandbox = true
+
+[exchanges.coinbase]
+# Coinbase Pro API credentials
+# api_key = "your_coinbase_api_key"
+# api_secret = "your_coinbase_api_secret"
+# passphrase = "your_coinbase_passphrase"
+# sandbox = true
+
+[exchanges.kraken]
+# Kraken API credentials
+# api_key = "your_kraken_api_key"
+# api_secret = "your_kraken_api_secret"
+
+# Risk management settings
+[risk]
+# Maximum daily loss (in USD)
+max_daily_loss = 500.0
+
+# Maximum drawdown percentage
+max_drawdown_percent = 10.0
+
+# Position size limits per symbol (in USD)
+max_position_per_symbol = 200.0
+
+# Rate limiting: max orders per minute
+max_orders_per_minute = 60
+
+# Emergency stop conditions
+enable_emergency_stop = true
+
+# Trading pairs to monitor
+[trading_pairs]
+# List of trading pairs to monitor for arbitrage opportunities
+symbols = [
+    "BTC/USDT",
+    "ETH/USDT", 
+    "BNB/USDT",
+    "ADA/USDT",
+    "SOL/USDT"
+]
+
+# Minimum volume threshold (in USD)
+min_volume_threshold = 100000.0

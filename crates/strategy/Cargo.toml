@@ -1,0 +1,36 @@
+[package]
+name = "arbfinder-strategy"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+# Core dependencies
+arbfinder-core = { path = "../core" }
+arbfinder-exchange = { path = "../exchange" }
+arbfinder-orderbook = { path = "../orderbook" }
+
+# Async runtime
+tokio = { workspace = true }
+async-trait = { workspace = true }
+futures = { workspace = true }
+
+# Data structures and math
+rust_decimal = { workspace = true }
+chrono = { workspace = true }
+ordered-float = { workspace = true }
+ndarray = { workspace = true }
+
+# Error handling
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+
+# Utilities
+tracing = { workspace = true }
+parking_lot = "0.12"
+
+[dev-dependencies]
+criterion = { workspace = true }
+mockall = { workspace = true }
+tokio-test = "0.4"

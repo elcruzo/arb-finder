@@ -1,0 +1,49 @@
+[package]
+name = "arbfinder-exchange"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+# Core dependencies
+arbfinder-core = { path = "../core" }
+
+# Async runtime
+tokio = { workspace = true }
+tokio-tungstenite = { workspace = true }
+async-trait = { workspace = true }
+futures = { workspace = true }
+
+# HTTP and WebSocket
+reqwest = { workspace = true }
+hyper = { workspace = true }
+rustls = { workspace = true }
+url = { workspace = true }
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+simd-json = { workspace = true }
+
+# Data types
+rust_decimal = { workspace = true }
+chrono = { workspace = true }
+uuid = { workspace = true }
+
+# Error handling
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+
+# Cryptography
+hmac = { workspace = true }
+sha2 = { workspace = true }
+hex = { workspace = true }
+
+# Utilities
+tracing = { workspace = true }
+
+[dev-dependencies]
+tokio-test = "0.4"
+criterion = { workspace = true }
+mockall = { workspace = true }

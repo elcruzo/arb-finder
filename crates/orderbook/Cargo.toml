@@ -1,0 +1,39 @@
+[package]
+name = "arbfinder-orderbook"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+# Core dependencies
+arbfinder-core = { path = "../core" }
+
+# Async runtime
+tokio = { workspace = true }
+async-trait = { workspace = true }
+futures = { workspace = true }
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+simd-json = { workspace = true }
+
+# Data structures and collections
+rust_decimal = { workspace = true }
+chrono = { workspace = true }
+ordered-float = { workspace = true }
+
+# Error handling
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+
+# Utilities
+tracing = { workspace = true }
+
+# Performance
+parking_lot = "0.12"
+
+[dev-dependencies]
+criterion = { workspace = true }
+tokio-test = "0.4"

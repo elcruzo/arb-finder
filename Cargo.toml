@@ -1,0 +1,130 @@
+[package]
+name = "arbfinder"
+version = "0.1.0"
+edition = "2021"
+authors = ["Your Name <your.email@example.com>"]
+description = "A cryptocurrency arbitrage finder and trading bot"
+license = "MIT"
+repository = "https://github.com/yourusername/arbfinder"
+keywords = ["cryptocurrency", "arbitrage", "trading", "bot", "finance"]
+categories = ["finance", "algorithms"]
+
+[[bin]]
+name = "arbfinder"
+path = "src/main.rs"
+
+[lib]
+name = "arbfinder"
+path = "src/lib.rs"
+
+[workspace]
+members = [
+    "crates/core",
+    "crates/exchange", 
+    "crates/orderbook",
+    "crates/strategy",
+    "crates/execution",
+    "crates/monitoring",
+    "adapters/binance",
+    "adapters/coinbase", 
+    "adapters/kraken",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+authors = ["Your Name <your.email@example.com>"]
+license = "MIT"
+repository = "https://github.com/yourusername/arbfinder"
+
+[workspace.dependencies]
+# Async runtime and utilities
+tokio = { version = "1.35", features = ["full"] }
+tokio-tungstenite = { version = "0.20", features = ["native-tls"] }
+async-trait = "0.1"
+futures = "0.3"
+
+# HTTP and WebSocket
+reqwest = { version = "0.11", features = ["json", "rustls-tls"] }
+hyper = { version = "0.14", features = ["full"] }
+axum = "0.7"
+rustls = "0.21"
+url = "2.4"
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+simd-json = "0.13"
+toml = "0.8"
+
+# Data structures and math
+rust_decimal = { version = "1.32", features = ["serde-float"] }
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1.4", features = ["v4", "serde"] }
+ordered-float = { version = "4.0", features = ["serde"] }
+ndarray = "0.15"
+
+# Monitoring and metrics
+prometheus = "0.13"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+
+# Error handling
+thiserror = "1.0"
+anyhow = "1.0"
+
+# Cryptography
+hmac = "0.12"
+sha2 = "0.10"
+hex = "0.4"
+
+# Configuration
+config = "0.14"
+clap = { version = "4.4", features = ["derive"] }
+lazy_static = "1.4"
+
+# Testing
+criterion = { version = "0.5", features = ["html_reports"] }
+mockall = "0.11"
+
+[dependencies]
+# Core crates
+arbfinder-core = { path = "crates/core" }
+arbfinder-exchange = { path = "crates/exchange" }
+arbfinder-orderbook = { path = "crates/orderbook" }
+arbfinder-strategy = { path = "crates/strategy" }
+arbfinder-execution = { path = "crates/execution" }
+arbfinder-monitoring = { path = "crates/monitoring" }
+
+# Exchange adapters
+arbfinder-binance = { path = "adapters/binance" }
+arbfinder-coinbase = { path = "adapters/coinbase" }
+arbfinder-kraken = { path = "adapters/kraken" }
+
+# CLI and configuration
+clap = { version = "4.4", features = ["derive"] }
+tokio = { version = "1.35", features = ["full"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+serde = { version = "1.0", features = ["derive"] }
+toml = "0.8"
+config = "0.14"
+
+# Error handling
+anyhow = "1.0"
+thiserror = "1.0"
+
+[dev-dependencies]
+tokio-test = "0.4"
+tempfile = "3.8"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+
+[profile.dev]
+opt-level = 0
+debug = true
+overflow-checks = true

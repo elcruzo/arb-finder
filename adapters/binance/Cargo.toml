@@ -1,0 +1,39 @@
+[package]
+name = "arbfinder-binance"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+arbfinder-core = { path = "../../crates/core" }
+arbfinder-exchange = { path = "../../crates/exchange" }
+arbfinder-orderbook = { path = "../../crates/orderbook" }
+
+tokio = { workspace = true }
+tokio-tungstenite = { workspace = true }
+async-trait = { workspace = true }
+futures = { workspace = true }
+
+reqwest = { workspace = true }
+url = { workspace = true }
+
+serde = { workspace = true }
+serde_json = { workspace = true }
+simd-json = { workspace = true }
+
+rust_decimal = { workspace = true }
+chrono = { workspace = true }
+uuid = { workspace = true }
+
+tracing = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+
+hmac = { workspace = true }
+sha2 = { workspace = true }
+hex = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util"] }
+mockall = { workspace = true }

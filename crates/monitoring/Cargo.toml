@@ -1,0 +1,50 @@
+[package]
+name = "arbfinder-monitoring"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# Core dependencies
+arbfinder-core = { path = "../core" }
+
+# Async runtime
+tokio = { version = "1.0", features = ["full"] }
+async-trait = "0.1"
+
+# Metrics and monitoring
+prometheus = "0.13"
+metrics = "0.23"
+metrics-prometheus = "0.7"
+
+# Logging and tracing
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+tracing-appender = "0.2"
+
+# HTTP server for metrics endpoint
+axum = "0.7"
+tower = "0.4"
+tower-http = { version = "0.5", features = ["cors", "trace"] }
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Time handling
+chrono = { version = "0.4", features = ["serde"] }
+
+# Data structures
+dashmap = "6.0"
+
+# Error handling
+thiserror = "1.0"
+anyhow = "1.0"
+
+# Utilities
+uuid = { version = "1.0", features = ["v4"] }
+
+# Notifications
+reqwest = { version = "0.12", features = ["json"] }
+
+[dev-dependencies]
+tokio-test = "0.4"
