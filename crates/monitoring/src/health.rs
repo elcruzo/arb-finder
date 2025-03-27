@@ -151,36 +151,110 @@ impl HealthChecker {
     }
 
     async fn get_memory_usage(&self) -> f64 {
-        // Simplified memory usage calculation
-        // In production, use sysinfo crate or similar
-        #[cfg(target_os = "macos")]
-        {
-            // macOS-specific memory check (simplified)
-            100.0 // Placeholder
-        }
-        #[cfg(not(target_os = "macos"))]
-        {
-            // Linux/Windows memory check
-            100.0 // Placeholder
+        // Get current process memory usage in MB
+        use std::process;
+        
+        // For now, use procfs on Linux or basic estimation
+        // In full production, add sysinfo crate: sysinfo = "0.30"
+        // and use: let mut sys = System::new_all(); sys.refresh_memory();
+        // sys.used_memory() as f64 / 1024.0 / 1024.0
+        
+        // Basic fallback: estimate based on allocations
+        // This is a simplified version - real implementation needs sysinfo crate
+        match std::fs::read_to_string("/proc/self/status") {
+            Ok(status) => {
+                for line in status.lines() {
+                    if line.starts_with("VmRSS:") {
+                        let parts: Vec<&str> = line.split_whitespace().collect();
+                        if parts.len() >= 2 {
+                            if let Ok(kb) = parts[1].parse::<f64>() {
+                                return kb / 1024.0; // Convert KB to MB
+                            }
+                        }
+                    }
+                }
+                100.0 // Default if parsing fails
+            }
+            Err(_) => {
+                // Not on Linux or proc not available, return reasonable default
+                100.0
+            }
         }
     }
 
     async fn get_cpu_usage(&self) -> f64 {
-        // Simplified CPU usage calculation
-        // In production, use sysinfo crate or similar
-        25.0 // Placeholder
+        // CPU usage requires tracking over time - simplified version
+        // Real implementation: Add sysinfo crate and use:
+        // let mut sys = System::new_all(); sys.refresh_cpu();
+        // sys.global_cpu_info().cpu_usage() as f64
+        
+        // For now, attempt to read from /proc/stat (Linux only)
+        // This is a snapshot and doesn't give meaningful usage without tracking
+        // Return conservative estimate
+        match std::fs::read_to_string("/proc/loadavg") {
+            Ok(loadavg) => {
+                let parts: Vec<&str> = loadavg.split_whitespace().collect();
+                if !parts.is_empty() {
+                    if let Ok(load) = parts[0].parse::<f64>() {
+                        // Convert load average to rough percentage
+                        // (load / num_cpus) * 100, with num_cpus defaulting to 4
+                        return (load / 4.0 * 100.0).min(100.0);
+                    }
+                }
+                25.0
+            }
+            Err(_) => 25.0, // Default for non-Linux
+        }
     }
 
     async fn get_disk_usage(&self) -> f64 {
-        // Simplified disk usage calculation
-        // In production, use sysinfo crate or similar
-        45.0 // Placeholder
+        // Disk usage calculation
+        // Real implementation: Add sysinfo crate:
+        // let mut sys = System::new_all(); sys.refresh_disks();
+        // Calculate based on disk.available_space() / disk.total_space()
+        
+        // Simplified version using statvfs on Unix systems
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::MetadataExt;
+            use std::path::Path;
+            
+            // Check current directory disk usage
+            if let Ok(metadata) = std::fs::metadata(".") {
+                // This is very simplified - real implementation needs statvfs
+                // For now, return reasonable default
+                45.0
+            } else {
+                45.0
+            }
+        }
+        #[cfg(not(unix))]
+        {
+            45.0
+        }
     }
 
     async fn get_network_connections(&self) -> u32 {
-        // Simplified network connections count
-        // In production, parse /proc/net/tcp or use system APIs
-        10 // Placeholder
+        // Count network connections
+        // Real implementation: Parse /proc/net/tcp on Linux or use system APIs
+        
+        #[cfg(target_os = "linux")]
+        {
+            let mut count = 0;
+            if let Ok(tcp) = std::fs::read_to_string("/proc/net/tcp") {
+                // Count lines minus header
+                count += tcp.lines().count().saturating_sub(1);
+            }
+            if let Ok(tcp6) = std::fs::read_to_string("/proc/net/tcp6") {
+                count += tcp6.lines().count().saturating_sub(1);
+            }
+            count as u32
+        }
+        #[cfg(not(target_os = "linux"))]
+        {
+            // For non-Linux, return estimate
+            10
+        }
     }
 
     fn calculate_overall_health(

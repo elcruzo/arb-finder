@@ -34,3 +34,4 @@ parking_lot = "0.12"
 criterion = { workspace = true }
 mockall = { workspace = true }
 tokio-test = "0.4"
+rust_decimal_macros = "1.32"

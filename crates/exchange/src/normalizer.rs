@@ -90,7 +90,7 @@ impl DefaultSymbolNormalizer {
                 for quote in &["USDT", "USDC", "USD", "BTC", "ETH", "BNB"] {
                     if symbol_str.ends_with(quote) && symbol_str.len() > quote.len() {
                         let base = &symbol_str[..symbol_str.len() - quote.len()];
-                        return Ok(Symbol::new(base, quote));
+                        return Ok(Symbol::new(base, *quote));
                     }
                 }
             } else if let Some(pos) = symbol_str.find(separator) {

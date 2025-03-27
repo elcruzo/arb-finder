@@ -1,4 +1,5 @@
 use arbfinder_core::{ArbFinderError, Result};
+use async_trait::async_trait;
 use reqwest::{Client, Method, Response};
 use serde_json::Value;
 use std::collections::HashMap;
@@ -173,9 +174,7 @@ impl RestClientImpl {
         if !status.is_success() {
             let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
             error!("HTTP error {}: {}", status, error_text);
-            return Err(ArbFinderError::Http(reqwest::Error::from(
-                reqwest::ErrorKind::Request
-            )));
+            return Err(ArbFinderError::Exchange(format!("HTTP error {}: {}", status, error_text)));
         }
 
         // Parse JSON response
@@ -246,6 +245,7 @@ impl RestClientImpl {
     }
 }
 
+#[async_trait]
 impl RestClient for RestClientImpl {
     async fn get(&self, endpoint: &str, params: Option<&HashMap<String, String>>) -> Result<Value> {
         self.request(Method::GET, endpoint, params, None, true).await

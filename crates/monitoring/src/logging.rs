@@ -4,6 +4,7 @@ use tracing_subscriber::{
     fmt,
     layer::SubscriberExt,
     util::SubscriberInitExt,
+    Layer,
     EnvFilter,
 };
 use tracing_appender::{non_blocking, rolling};
@@ -60,7 +61,7 @@ pub fn setup_logging(config: &MonitoringConfig) -> Result<()> {
         // Create log directory if it doesn't exist
         if let Some(parent) = log_path.parent() {
             std::fs::create_dir_all(parent)
-                .map_err(|e| ArbFinderError::InternalError(format!("Failed to create log directory: {}", e)))?;
+                .map_err(|e| ArbFinderError::Internal(format!("Failed to create log directory: {}", e)))?;
         }
 
         let file_appender = rolling::daily(

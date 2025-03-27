@@ -8,11 +8,12 @@ use arbfinder_exchange::prelude::*;
 use arbfinder_strategy::prelude::*;
 use arbfinder_execution::prelude::*;
 use arbfinder_monitoring::prelude::*;
+use rust_decimal::Decimal;
 
 // Exchange adapters
-use arbfinder_binance::BinanceClient;
-use arbfinder_coinbase::CoinbaseClient;
-use arbfinder_kraken::KrakenClient;
+use arbfinder_binance::BinanceAdapter;
+use arbfinder_coinbase::CoinbaseAdapter;
+use arbfinder_kraken::KrakenAdapter;
 
 #[derive(Parser)]
 #[command(name = "arbfinder")]
@@ -123,7 +124,7 @@ impl ArbFinderApp {
         // Update health status
         self.health_checker.update_component_health(
             "execution_engine",
-            HealthStatus::Healthy,
+            HealthState::Healthy,
             "Execution engine started successfully"
         ).await;
 
@@ -143,13 +144,12 @@ impl ArbFinderApp {
 
         // Setup Binance
         if let Some(binance_config) = &self.config.exchanges.binance {
-            let binance_client = Arc::new(BinanceClient::new(
+            let binance_adapter = Arc::new(BinanceAdapter::with_credentials(
                 binance_config.api_key.clone(),
                 binance_config.api_secret.clone(),
-                binance_config.sandbox,
             ));
             
-            self.execution_engine.add_exchange("binance".to_string(), binance_client.clone());
+            self.execution_engine.add_exchange("binance".to_string(), binance_adapter);
             self.health_checker.register_component("exchange_binance").await;
             
             info!("Binance exchange configured");
@@ -157,14 +157,13 @@ impl ArbFinderApp {
 
         // Setup Coinbase
         if let Some(coinbase_config) = &self.config.exchanges.coinbase {
-            let coinbase_client = Arc::new(CoinbaseClient::new(
+            let coinbase_adapter = Arc::new(CoinbaseAdapter::with_credentials(
                 coinbase_config.api_key.clone(),
                 coinbase_config.api_secret.clone(),
                 coinbase_config.passphrase.clone().unwrap_or_default(),
-                coinbase_config.sandbox,
             ));
             
-            self.execution_engine.add_exchange("coinbase".to_string(), coinbase_client.clone());
+            self.execution_engine.add_exchange("coinbase".to_string(), coinbase_adapter);
             self.health_checker.register_component("exchange_coinbase").await;
             
             info!("Coinbase exchange configured");
@@ -172,12 +171,12 @@ impl ArbFinderApp {
 
         // Setup Kraken
         if let Some(kraken_config) = &self.config.exchanges.kraken {
-            let kraken_client = Arc::new(KrakenClient::new(
+            let kraken_adapter = Arc::new(KrakenAdapter::with_credentials(
                 kraken_config.api_key.clone(),
                 kraken_config.api_secret.clone(),
             ));
             
-            self.execution_engine.add_exchange("kraken".to_string(), kraken_client.clone());
+            self.execution_engine.add_exchange("kraken".to_string(), kraken_adapter);
             self.health_checker.register_component("exchange_kraken").await;
             
             info!("Kraken exchange configured");
@@ -189,8 +188,12 @@ impl ArbFinderApp {
     async fn setup_strategies(&mut self) -> Result<()> {
         info!("Setting up trading strategies");
 
-        // Add triangular arbitrage strategy
-        let triangular_strategy = Box::new(TriangularArbitrage::new());
+        // Add triangular arbitrage strategy with proper parameters
+        let triangular_strategy = Box::new(TriangularArbitrage::new(
+            "binance".to_string(),  // Default exchange
+            "USDT".to_string(),     // Base currency
+            Decimal::new(1, 1), // 0.1% minimum profit threshold
+        ));
         self.execution_engine.add_strategy(triangular_strategy);
         
         self.health_checker.register_component("strategy_triangular").await;
@@ -244,12 +247,32 @@ impl ArbFinderApp {
 }
 
 fn load_config(config_path: &str) -> Result<AppConfig> {
-    // Simplified config loading - in production, use a proper config library like config-rs
+    use std::fs;
     info!("Loading configuration from: {}", config_path);
     
-    // For now, return default config
-    // In production, you would parse TOML/YAML/JSON config file
-    Ok(AppConfig::default())
+    // Try to read and parse the config file
+    match fs::read_to_string(config_path) {
+        Ok(contents) => {
+            // Parse TOML config
+            // Note: In production, add toml = "0.8" to Cargo.toml and use proper parsing:
+            // let config: toml::Value = toml::from_str(&contents)
+            //     .map_err(|e| ArbFinderError::Config(format!("Failed to parse config: {}", e)))?;
+            
+            // For now, return default config since we don't have toml dependency
+            // This is marked for future enhancement
+            info!("Config file found but using default configuration (TOML parsing not yet implemented)");
+            info!("To enable config parsing, add 'toml = \"0.8\"' to Cargo.toml dependencies");
+            Ok(AppConfig::default())
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            info!("Config file not found at {}, using default configuration", config_path);
+            Ok(AppConfig::default())
+        }
+        Err(e) => {
+            error!("Failed to read config file: {}", e);
+            Err(ArbFinderError::Io(e))
+        }
+    }
 }
 
 #[tokio::main]

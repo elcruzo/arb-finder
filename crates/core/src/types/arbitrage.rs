@@ -39,7 +39,11 @@ impl ArbitrageOpportunity {
         } else {
             Decimal::ZERO
         };
-        let spread_bps = (spread_percentage * Decimal::from(100)).to_i32().unwrap_or(0);
+        let spread_bps = spread_percentage
+            .checked_mul(Decimal::from(100))
+            .and_then(|d| d.to_string().parse::<f64>().ok())
+            .map(|f| f as i32)
+            .unwrap_or(0);
 
         Self {
             id: uuid::Uuid::new_v4().to_string(),

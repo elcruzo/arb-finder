@@ -12,7 +12,7 @@ pub mod health;
 pub use metrics::{MetricsCollector, MetricsServer};
 pub use logging::{LoggingConfig, setup_logging};
 pub use alerts::{AlertManager, AlertConfig, Alert, AlertLevel};
-pub use health::{HealthChecker, HealthStatus};
+pub use health::{HealthChecker, HealthStatus, HealthState, ComponentHealth, SystemMetrics};
 
 #[derive(Debug, Clone)]
 pub struct MonitoringConfig {
@@ -149,6 +149,7 @@ pub mod prelude {
     pub use super::{
         MonitoringSystem, MonitoringConfig,
         MetricsCollector, AlertManager, Alert, AlertLevel,
-        HealthChecker, HealthStatus, setup_logging,
+        HealthChecker, HealthStatus, HealthState, ComponentHealth, SystemMetrics,
+        setup_logging,
     };
 }

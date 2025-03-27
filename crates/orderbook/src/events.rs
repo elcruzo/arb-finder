@@ -1,6 +1,7 @@
 use arbfinder_core::{Side, Symbol, VenueId};
 use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
+use rust_decimal::prelude::{ToPrimitive, FromStr};
 use serde::{Deserialize, Serialize};
 
 use crate::{FastOrderBook, OrderBookSnapshot, OrderBookUpdate, PriceLevel};
@@ -120,7 +121,6 @@ pub trait OrderBookEventHandler: Send + Sync {
     fn handle_event(&mut self, event: OrderBookEvent);
 }
 
-#[derive(Debug)]
 pub struct OrderBookEventProcessor {
     handlers: Vec<Box<dyn OrderBookEventHandler>>,
     previous_state: Option<OrderBookState>,

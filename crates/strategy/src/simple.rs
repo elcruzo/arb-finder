@@ -6,14 +6,14 @@ use tracing::{info, warn};
 
 use arbfinder_core::prelude::*;
 use arbfinder_exchange::prelude::*;
-use arbfinder_orderbook::OrderBook;
+use arbfinder_orderbook::FastOrderBook;
 use crate::Strategy;
 
 pub struct TriangularArbitrage {
     exchange: String,
     base_currency: String,
     min_profit_threshold: Decimal,
-    market_data: HashMap<String, Arc<OrderBook>>,
+    market_data: HashMap<String, Arc<FastOrderBook>>,
 }
 
 impl TriangularArbitrage {
@@ -100,14 +100,14 @@ impl TriangularArbitrage {
             let is_buying = parts[0] == self.base_currency;
             
             if is_buying {
-                if let Some((price, _)) = orderbook.best_ask() {
-                    amount = amount / price;
+                if let Some(level) = orderbook.best_ask() {
+                    amount = amount / level.price;
                 } else {
                     return None;
                 }
             } else {
-                if let Some((price, _)) = orderbook.best_bid() {
-                    amount = amount * price;
+                if let Some(level) = orderbook.best_bid() {
+                    amount = amount * level.price;
                 } else {
                     return None;
                 }
@@ -125,9 +125,9 @@ impl Strategy for TriangularArbitrage {
         "TriangularArbitrage".to_string()
     }
 
-    async fn on_tick(&mut self, market: &Market, _ticker: &Ticker, orderbook: Arc<OrderBook>) {
+    async fn on_tick(&mut self, symbol: &Symbol, _ticker: &Ticker, orderbook: Arc<FastOrderBook>) {
         // Update market data
-        self.market_data.insert(market.symbol.clone(), orderbook);
+        self.market_data.insert(symbol.to_pair(), orderbook);
 
         // Look for opportunities
         let opportunities = self.find_triangular_opportunities();

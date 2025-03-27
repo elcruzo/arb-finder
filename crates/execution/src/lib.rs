@@ -7,7 +7,7 @@ use tracing::{info, warn, error};
 
 use arbfinder_core::prelude::*;
 use arbfinder_exchange::prelude::*;
-use arbfinder_orderbook::OrderBook;
+use arbfinder_orderbook::FastOrderBook;
 use arbfinder_strategy::prelude::*;
 
 pub mod engine;
@@ -46,14 +46,14 @@ pub enum ExecutionEvent {
     RiskLimitHit(String),
     StrategySignal {
         strategy: String,
-        market: Market,
+        symbol: Symbol,
         signal: TradingSignal,
     },
 }
 
 #[derive(Debug, Clone)]
 pub struct TradingSignal {
-    pub side: Side,
+    pub side: OrderSide,
     pub price: Decimal,
     pub amount: Decimal,
     pub confidence: f64,

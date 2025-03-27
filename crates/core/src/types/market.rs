@@ -27,6 +27,14 @@ impl Symbol {
         }
     }
 
+    pub fn base(&self) -> &str {
+        &self.base
+    }
+
+    pub fn quote(&self) -> &str {
+        &self.quote
+    }
+
     pub fn to_pair(&self) -> String {
         format!("{}/{}", self.base, self.quote)
     }

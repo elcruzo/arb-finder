@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use rust_decimal::Decimal;
+use rust_decimal::prelude::ToPrimitive;
 use chrono::{DateTime, Utc, Duration};
 use tracing::{warn, error};
 
@@ -66,7 +67,7 @@ impl RiskManager {
     pub async fn check_order_risk(
         &self,
         symbol: &str,
-        side: Side,
+        side: OrderSide,
         price: Decimal,
         amount: Decimal,
     ) -> bool {
@@ -152,12 +153,12 @@ impl RiskManager {
         self.config.allowed_symbols.contains(&symbol.to_string())
     }
 
-    fn check_position_size_limit(&self, symbol: &str, side: Side, amount: Decimal) -> bool {
+    fn check_position_size_limit(&self, symbol: &str, side: OrderSide, amount: Decimal) -> bool {
         let current_size = self.position_sizes.get(symbol).copied().unwrap_or(Decimal::ZERO);
         
         let new_size = match side {
-            Side::Buy => current_size + amount,
-            Side::Sell => (current_size - amount).abs(),
+            OrderSide::Buy => current_size + amount,
+            OrderSide::Sell => (current_size - amount).abs(),
         };
 
         new_size <= self.config.max_position_size

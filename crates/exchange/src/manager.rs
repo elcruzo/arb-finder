@@ -7,7 +7,6 @@ use tracing::{debug, error, info, warn};
 
 use crate::traits::{ExchangeAdapter, ConnectionStatus, SubscriptionInfo};
 
-#[derive(Debug)]
 pub struct ExchangeManager {
     adapters: Arc<RwLock<HashMap<VenueId, Arc<Mutex<Box<dyn ExchangeAdapter>>>>>>,
     connections: Arc<RwLock<HashMap<VenueId, ConnectionStatus>>>,
@@ -451,6 +450,7 @@ impl ExchangeManagerExt for ExchangeManager {
 
     async fn get_market_data_stats(&self) -> HashMap<VenueId, MarketDataStats> {
         let subscriptions = self.subscriptions.read().await;
+        let connections = self.connections.read().await;
         let mut stats = HashMap::new();
 
         for (venue_id, subs) in subscriptions.iter() {
@@ -473,12 +473,29 @@ impl ExchangeManagerExt for ExchangeManager {
                 0.0
             };
 
+            // Calculate uptime percentage based on connection status
+            let uptime_percentage = if let Some(status) = connections.get(venue_id) {
+                if status.connected {
+                    // If currently connected, consider uptime based on error rate
+                    let error_rate = if total_messages > 0 {
+                        (status.error_count as f64 / total_messages as f64) * 100.0
+                    } else {
+                        0.0
+                    };
+                    (100.0 - error_rate).max(0.0)
+                } else {
+                    0.0 // Disconnected means 0% uptime
+                }
+            } else {
+                0.0
+            };
+
             stats.insert(venue_id.clone(), MarketDataStats {
                 total_messages,
                 messages_per_second,
                 last_message_time,
                 symbols_subscribed,
-                uptime_percentage: 100.0, // TODO: Calculate actual uptime
+                uptime_percentage,
             });
         }
 
@@ -543,7 +560,17 @@ mod tests {
         }
 
         async fn get_symbol_info(&self, _symbol: &Symbol) -> Result<crate::traits::SymbolInfo> {
-            unimplemented!()
+            Ok(crate::traits::SymbolInfo {
+                symbol: _symbol.clone(),
+                base_asset: _symbol.base().to_string(),
+                quote_asset: _symbol.quote().to_string(),
+                status: "TRADING".to_string(),
+                base_precision: 8,
+                quote_precision: 8,
+                min_quantity: rust_decimal::Decimal::new(1, 8),
+                max_quantity: rust_decimal::Decimal::new(1000000, 0),
+                min_notional: rust_decimal::Decimal::new(10, 0),
+            })
         }
 
         async fn subscribe_orderbook(&mut self, _symbol: &Symbol, _depth: Option<u32>) -> Result<()> {
@@ -571,51 +598,75 @@ mod tests {
         }
 
         async fn market_data_stream(&self) -> Result<Pin<Box<dyn Stream<Item = Result<MarketData>> + Send>>> {
-            unimplemented!()
+            Err(ArbFinderError::Exchange("Mock adapter does not support streaming".to_string()))
         }
 
         async fn order_update_stream(&self) -> Result<Pin<Box<dyn Stream<Item = Result<OrderUpdate>> + Send>>> {
-            unimplemented!()
+            Err(ArbFinderError::Exchange("Mock adapter does not support streaming".to_string()))
         }
 
         async fn place_order(&mut self, _request: &OrderRequest) -> Result<Order> {
-            unimplemented!()
+            Ok(Order {
+                id: OrderId::new("mock_order_123"),
+                symbol: Symbol::new("BTC", "USDT"),
+                side: arbfinder_core::Side::Buy,
+                order_type: arbfinder_core::OrderType::Limit,
+                price: Some(rust_decimal::Decimal::new(50000, 0)),
+                quantity: rust_decimal::Decimal::new(1, 1),
+                filled_quantity: rust_decimal::Decimal::ZERO,
+                status: arbfinder_core::OrderStatus::New,
+                timestamp: chrono::Utc::now(),
+            })
         }
 
         async fn cancel_order(&mut self, _order_id: &OrderId) -> Result<()> {
-            unimplemented!()
+            Ok(())
         }
 
         async fn cancel_all_orders(&mut self, _symbol: Option<&Symbol>) -> Result<Vec<OrderId>> {
-            unimplemented!()
+            Ok(vec![])
         }
 
         async fn get_order(&self, _order_id: &OrderId) -> Result<Option<Order>> {
-            unimplemented!()
+            Ok(None)
         }
 
         async fn get_open_orders(&self, _symbol: Option<&Symbol>) -> Result<Vec<Order>> {
-            unimplemented!()
+            Ok(vec![])
         }
 
         async fn get_order_history(&self, _symbol: Option<&Symbol>, _limit: Option<u32>) -> Result<Vec<Order>> {
-            unimplemented!()
+            Ok(vec![])
         }
 
         async fn get_balances(&self) -> Result<Vec<Balance>> {
-            unimplemented!()
+            Ok(vec![Balance {
+                asset: "USDT".to_string(),
+                free: rust_decimal::Decimal::new(10000, 0),
+                locked: rust_decimal::Decimal::ZERO,
+            }])
         }
 
-        async fn get_balance(&self, _asset: &str) -> Result<Option<Balance>> {
-            unimplemented!()
+        async fn get_balance(&self, asset: &str) -> Result<Option<Balance>> {
+            Ok(Some(Balance {
+                asset: asset.to_string(),
+                free: rust_decimal::Decimal::new(10000, 0),
+                locked: rust_decimal::Decimal::ZERO,
+            }))
         }
 
         async fn get_trade_history(&self, _symbol: Option<&Symbol>, _limit: Option<u32>) -> Result<Vec<OrderFill>> {
-            unimplemented!()
+            Ok(vec![])
         }
 
         async fn get_account_info(&self) -> Result<crate::traits::AccountInfo> {
-            unimplemented!()
+            Ok(crate::traits::AccountInfo {
+                can_trade: true,
+                can_withdraw: true,
+                can_deposit: true,
+                balances: vec![],
+                update_time: chrono::Utc::now(),
+            })
         }
     }
 

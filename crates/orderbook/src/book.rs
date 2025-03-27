@@ -4,15 +4,15 @@ use ordered_float::OrderedFloat;
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
-use std::sync::atomic::{AtomicU64, Ordering};
 use tracing::debug;
+use rust_decimal::prelude::ToPrimitive;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct FastOrderBook {
     pub symbol: Symbol,
     pub bids: BTreeMap<OrderedFloat<f64>, PriceLevel>,
     pub asks: BTreeMap<OrderedFloat<f64>, PriceLevel>,
-    pub sequence: AtomicU64,
+    pub sequence: u64,
     pub last_update: DateTime<Utc>,
     pub checksum: Option<u32>,
     max_depth: usize,
@@ -64,11 +64,23 @@ impl FastOrderBook {
             symbol,
             bids: BTreeMap::new(),
             asks: BTreeMap::new(),
-            sequence: AtomicU64::new(0),
+            sequence: 0,
             last_update: Utc::now(),
             checksum: None,
             max_depth: max_depth.unwrap_or(1000),
         }
+    }
+
+    fn increment_sequence(&mut self) {
+        self.sequence = self.sequence.wrapping_add(1);
+    }
+
+    pub fn get_sequence(&self) -> u64 {
+        self.sequence
+    }
+
+    pub fn set_sequence(&mut self, sequence: u64) {
+        self.sequence = sequence;
     }
 
     pub fn update_bid(&mut self, price: Decimal, quantity: Decimal, order_count: Option<u32>) {
@@ -286,18 +298,10 @@ impl FastOrderBook {
         }
     }
 
-    pub fn get_sequence(&self) -> u64 {
-        self.sequence.load(Ordering::Relaxed)
-    }
-
-    pub fn set_sequence(&self, sequence: u64) {
-        self.sequence.store(sequence, Ordering::Relaxed);
-    }
-
     pub fn clear(&mut self) {
         self.bids.clear();
         self.asks.clear();
-        self.sequence.store(0, Ordering::Relaxed);
+        self.sequence = 0;
         self.last_update = Utc::now();
         self.checksum = None;
     }
@@ -361,10 +365,6 @@ impl FastOrderBook {
         }
     }
 
-    fn increment_sequence(&self) {
-        self.sequence.fetch_add(1, Ordering::Relaxed);
-    }
-
     pub fn to_core_orderbook(&self) -> OrderBook {
         let mut core_book = OrderBook::new(self.symbol.clone());
         
@@ -424,7 +424,7 @@ impl OrderBookUpdate {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct OrderBookSnapshot {
     pub symbol: Symbol,
     pub bids: Vec<PriceLevel>,

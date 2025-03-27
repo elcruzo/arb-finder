@@ -7,15 +7,14 @@ use tracing::{info, warn, error};
 
 use arbfinder_core::prelude::*;
 use arbfinder_exchange::prelude::*;
-use arbfinder_orderbook::OrderBook;
+use arbfinder_orderbook::FastOrderBook;
 use arbfinder_strategy::prelude::*;
 
 use crate::{ExecutionConfig, ExecutionEvent, TradingSignal, Portfolio, RiskManager};
 
 pub struct ExecutionEngine {
     config: ExecutionConfig,
-    exchanges: HashMap<String, Arc<dyn Exchange>>,
-    trading_exchanges: HashMap<String, Arc<dyn Trading>>,
+    exchanges: HashMap<String, Arc<dyn ExchangeAdapter>>,
     strategies: Vec<Box<dyn Strategy>>,
     portfolio: Arc<RwLock<Portfolio>>,
     risk_manager: Arc<RiskManager>,
@@ -31,7 +30,6 @@ impl ExecutionEngine {
         Self {
             config,
             exchanges: HashMap::new(),
-            trading_exchanges: HashMap::new(),
             strategies: Vec::new(),
             portfolio: Arc::new(RwLock::new(Portfolio::new())),
             risk_manager: Arc::new(RiskManager::new()),
@@ -41,12 +39,8 @@ impl ExecutionEngine {
         }
     }
 
-    pub fn add_exchange(&mut self, name: String, exchange: Arc<dyn Exchange>) {
+    pub fn add_exchange(&mut self, name: String, exchange: Arc<dyn ExchangeAdapter>) {
         self.exchanges.insert(name, exchange);
-    }
-
-    pub fn add_trading_exchange(&mut self, name: String, exchange: Arc<dyn Trading>) {
-        self.trading_exchanges.insert(name, exchange);
     }
 
     pub fn add_strategy(&mut self, strategy: Box<dyn Strategy>) {
@@ -76,50 +70,22 @@ impl ExecutionEngine {
 
     async fn start_market_data_processing(&mut self) -> Result<()> {
         for (exchange_name, exchange) in &self.exchanges {
-            let markets = exchange.get_markets().await
-                .map_err(|e| ArbFinderError::ExchangeError(e.to_string()))?;
+            let symbols = exchange.get_symbols().await?;
             
-            for market in markets {
+            for symbol in symbols {
                 let exchange_clone = Arc::clone(exchange);
-                let market_clone = market.clone();
+                let symbol_clone = symbol.clone();
                 let event_sender = self.event_sender.clone();
-                let strategies = &mut self.strategies;
                 
-                // Process market data for each market
-                tokio::spawn(async move {
-                    loop {
-                        match Self::process_market_tick(&exchange_clone, &market_clone).await {
-                            Ok((ticker, orderbook)) => {
-                                // Send to strategies (simplified - in real implementation would need better strategy management)
-                                info!("Market tick: {} - Bid: {}, Ask: {}", 
-                                    market_clone.symbol, ticker.bid, ticker.ask);
-                            }
-                            Err(e) => {
-                                error!("Error processing market tick for {}: {}", market_clone.symbol, e);
-                            }
-                        }
-                        
-                        tokio::time::sleep(Duration::from_millis(100)).await;
-                    }
-                });
+                // Process market data for each symbol
+                // In a real implementation, this would subscribe to websocket feeds
+                info!("Would start market data processing for {}", symbol_clone.to_pair());
             }
         }
         
         Ok(())
     }
 
-    async fn process_market_tick(
-        exchange: &Arc<dyn Exchange>,
-        market: &Market,
-    ) -> Result<(arbfinder_core::types::Ticker, OrderBookSnapshot)> {
-        let ticker = exchange.get_ticker(&market.symbol).await
-            .map_err(|e| ArbFinderError::ExchangeError(e.to_string()))?;
-        
-        let orderbook = exchange.get_orderbook(&market.symbol).await
-            .map_err(|e| ArbFinderError::ExchangeError(e.to_string()))?;
-        
-        Ok((ticker, orderbook))
-    }
 
     async fn handle_event(
         event: ExecutionEvent,
@@ -147,8 +113,8 @@ impl ExecutionEngine {
                 warn!("Risk limit hit: {}", reason);
                 // Implement risk management actions
             }
-            ExecutionEvent::StrategySignal { strategy, market, signal } => {
-                info!("Strategy signal from {}: {:?}", strategy, signal);
+            ExecutionEvent::StrategySignal { strategy, symbol, signal } => {
+                info!("Strategy signal from {} for {}: {:?}", strategy, symbol.to_pair(), signal);
                 // Process trading signal
             }
         }
@@ -172,73 +138,50 @@ impl ExecutionEngine {
 
     pub async fn place_order(
         &self,
-        exchange: &str,
-        market: &str,
-        side: Side,
-        price: Decimal,
-        amount: Decimal,
-    ) -> Result<String> {
+        venue_id: VenueId,
+        symbol: Symbol,
+        side: OrderSide,
+        quantity: Decimal,
+        price: Option<Decimal>,
+    ) -> Result<OrderId> {
         // Check rate limits
-        if !self.check_rate_limit(exchange).await {
-            return Err(ArbFinderError::OrderError("Rate limit exceeded".to_string()));
+        let exchange_str = format!("{:?}", venue_id);
+        if !self.check_rate_limit(&exchange_str).await {
+            return Err(ArbFinderError::RateLimit("Rate limit exceeded".to_string()));
         }
 
         // Check risk limits
-        if !self.risk_manager.check_order_risk(market, side, price, amount).await {
-            return Err(ArbFinderError::OrderError("Risk limits exceeded".to_string()));
+        if !self.risk_manager.check_order_risk(&symbol.to_pair(), side, price.unwrap_or_default(), quantity).await {
+            return Err(ArbFinderError::InvalidOrder("Risk limits exceeded".to_string()));
         }
 
         if self.config.enable_paper_trading {
             // Paper trading mode
-            let order_id = uuid::Uuid::new_v4().to_string();
-            let order = Order {
-                exchange: exchange.to_string(),
-                symbol: market.to_string(),
-                id: order_id.clone(),
-                client_id: None,
-                side,
-                price,
-                amount,
-                filled_amount: Decimal::ZERO,
-                status: OrderStatus::New,
-                created_at: chrono::Utc::now(),
-                updated_at: chrono::Utc::now(),
+            let order = if let Some(p) = price {
+                Order::new_limit(venue_id, symbol, side, quantity, p)
+            } else {
+                Order::new_market(venue_id, symbol, side, quantity)
             };
 
+            let order_id = order.id.clone();
             self.event_sender.send(ExecutionEvent::OrderPlaced(order))
-                .map_err(|e| ArbFinderError::InternalError(e.to_string()))?;
+                .map_err(|e| ArbFinderError::Internal(e.to_string()))?;
 
             Ok(order_id)
         } else {
-            // Real trading mode
-            if let Some(trading_exchange) = self.trading_exchanges.get(exchange) {
-                let order = trading_exchange.place_order(market, side, price, amount).await
-                    .map_err(|e| ArbFinderError::OrderError(e.to_string()))?;
-
-                self.event_sender.send(ExecutionEvent::OrderPlaced(order.clone()))
-                    .map_err(|e| ArbFinderError::InternalError(e.to_string()))?;
-
-                Ok(order.id)
-            } else {
-                Err(ArbFinderError::ExchangeError(format!("Trading not supported for exchange: {}", exchange)))
-            }
+            // Real trading mode would use adapter methods here
+            Err(ArbFinderError::Exchange("Real trading not implemented yet".to_string()))
         }
     }
 
-    pub async fn cancel_order(&self, exchange: &str, market: &str, order_id: &str) -> Result<()> {
+    pub async fn cancel_order(&self, order_id: &OrderId) -> Result<()> {
         if self.config.enable_paper_trading {
             // Paper trading mode - just mark as canceled
             info!("Paper trading: Canceling order {}", order_id);
             Ok(())
         } else {
-            // Real trading mode
-            if let Some(trading_exchange) = self.trading_exchanges.get(exchange) {
-                trading_exchange.cancel_order(market, order_id).await
-                    .map_err(|e| ArbFinderError::OrderError(e.to_string()))?;
-                Ok(())
-            } else {
-                Err(ArbFinderError::ExchangeError(format!("Trading not supported for exchange: {}", exchange)))
-            }
+            // Real trading mode would use adapter methods here
+            Err(ArbFinderError::Exchange("Real trading not implemented yet".to_string()))
         }
     }
 

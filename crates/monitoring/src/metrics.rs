@@ -2,7 +2,7 @@ use std::sync::Arc;
 use std::collections::HashMap;
 use prometheus::{
     Registry, Counter, Gauge, Histogram, HistogramOpts, Opts,
-    Encoder, TextEncoder, gather,
+    Encoder, TextEncoder, IntCounterVec, IntGaugeVec, HistogramVec,
 };
 use axum::{
     extract::State,
@@ -20,16 +20,16 @@ pub struct MetricsCollector {
     registry: Registry,
     
     // Trading metrics
-    pub trades_total: Counter,
-    pub orders_total: Counter,
-    pub arbitrage_opportunities: Counter,
+    pub trades_total: IntCounterVec,
+    pub orders_total: IntCounterVec,
+    pub arbitrage_opportunities: IntCounterVec,
     pub profit_total: Gauge,
     pub portfolio_value: Gauge,
     
     // Exchange metrics
-    pub exchange_requests: Counter,
-    pub exchange_errors: Counter,
-    pub exchange_latency: Histogram,
+    pub exchange_requests: IntCounterVec,
+    pub exchange_errors: IntCounterVec,
+    pub exchange_latency: HistogramVec,
     
     // System metrics
     pub system_uptime: Gauge,
@@ -46,21 +46,30 @@ impl MetricsCollector {
     pub fn new() -> Self {
         let registry = Registry::new();
         
-        // Trading metrics
-        let trades_total = Counter::with_opts(Opts::new(
-            "arbfinder_trades_total",
-            "Total number of trades executed"
-        )).unwrap();
+        // Trading metrics with labels
+        let trades_total = IntCounterVec::new(
+            Opts::new(
+                "arbfinder_trades_total",
+                "Total number of trades executed"
+            ),
+            &["exchange", "symbol", "side"]
+        ).unwrap();
         
-        let orders_total = Counter::with_opts(Opts::new(
-            "arbfinder_orders_total",
-            "Total number of orders placed"
-        )).unwrap();
+        let orders_total = IntCounterVec::new(
+            Opts::new(
+                "arbfinder_orders_total",
+                "Total number of orders placed"
+            ),
+            &["exchange", "symbol", "side"]
+        ).unwrap();
         
-        let arbitrage_opportunities = Counter::with_opts(Opts::new(
-            "arbfinder_arbitrage_opportunities_total",
-            "Total number of arbitrage opportunities detected"
-        )).unwrap();
+        let arbitrage_opportunities = IntCounterVec::new(
+            Opts::new(
+                "arbfinder_arbitrage_opportunities_total",
+                "Total number of arbitrage opportunities detected"
+            ),
+            &["exchange_a", "exchange_b", "symbol"]
+        ).unwrap();
         
         let profit_total = Gauge::with_opts(Opts::new(
             "arbfinder_profit_total",
@@ -72,21 +81,30 @@ impl MetricsCollector {
             "Current portfolio value in USD"
         )).unwrap();
         
-        // Exchange metrics
-        let exchange_requests = Counter::with_opts(Opts::new(
-            "arbfinder_exchange_requests_total",
-            "Total number of exchange API requests"
-        )).unwrap();
+        // Exchange metrics with labels
+        let exchange_requests = IntCounterVec::new(
+            Opts::new(
+                "arbfinder_exchange_requests_total",
+                "Total number of exchange API requests"
+            ),
+            &["exchange", "endpoint"]
+        ).unwrap();
         
-        let exchange_errors = Counter::with_opts(Opts::new(
-            "arbfinder_exchange_errors_total",
-            "Total number of exchange API errors"
-        )).unwrap();
+        let exchange_errors = IntCounterVec::new(
+            Opts::new(
+                "arbfinder_exchange_errors_total",
+                "Total number of exchange API errors"
+            ),
+            &["exchange", "endpoint", "error_type"]
+        ).unwrap();
         
-        let exchange_latency = Histogram::with_opts(HistogramOpts::new(
-            "arbfinder_exchange_latency_seconds",
-            "Exchange API request latency in seconds"
-        )).unwrap();
+        let exchange_latency = HistogramVec::new(
+            HistogramOpts::new(
+                "arbfinder_exchange_latency_seconds",
+                "Exchange API request latency in seconds"
+            ),
+            &["exchange", "endpoint"]
+        ).unwrap();
         
         // System metrics
         let system_uptime = Gauge::with_opts(Opts::new(
@@ -194,10 +212,10 @@ impl MetricsCollector {
     
     pub fn create_custom_counter(&mut self, name: &str, help: &str) -> Result<()> {
         let counter = Counter::with_opts(Opts::new(name, help))
-            .map_err(|e| ArbFinderError::InternalError(e.to_string()))?;
+            .map_err(|e| ArbFinderError::Internal(e.to_string()))?;
         
         self.registry.register(Box::new(counter.clone()))
-            .map_err(|e| ArbFinderError::InternalError(e.to_string()))?;
+            .map_err(|e| ArbFinderError::Internal(e.to_string()))?;
         
         self.custom_counters.insert(name.to_string(), counter);
         Ok(())
@@ -205,10 +223,10 @@ impl MetricsCollector {
     
     pub fn create_custom_gauge(&mut self, name: &str, help: &str) -> Result<()> {
         let gauge = Gauge::with_opts(Opts::new(name, help))
-            .map_err(|e| ArbFinderError::InternalError(e.to_string()))?;
+            .map_err(|e| ArbFinderError::Internal(e.to_string()))?;
         
         self.registry.register(Box::new(gauge.clone()))
-            .map_err(|e| ArbFinderError::InternalError(e.to_string()))?;
+            .map_err(|e| ArbFinderError::Internal(e.to_string()))?;
         
         self.custom_gauges.insert(name.to_string(), gauge);
         Ok(())
@@ -216,10 +234,10 @@ impl MetricsCollector {
     
     pub fn create_custom_histogram(&mut self, name: &str, help: &str) -> Result<()> {
         let histogram = Histogram::with_opts(HistogramOpts::new(name, help))
-            .map_err(|e| ArbFinderError::InternalError(e.to_string()))?;
+            .map_err(|e| ArbFinderError::Internal(e.to_string()))?;
         
         self.registry.register(Box::new(histogram.clone()))
-            .map_err(|e| ArbFinderError::InternalError(e.to_string()))?;
+            .map_err(|e| ArbFinderError::Internal(e.to_string()))?;
         
         self.custom_histograms.insert(name.to_string(), histogram);
         Ok(())
@@ -249,10 +267,10 @@ impl MetricsCollector {
         
         let mut buffer = Vec::new();
         encoder.encode(&metric_families, &mut buffer)
-            .map_err(|e| ArbFinderError::InternalError(e.to_string()))?;
+            .map_err(|e| ArbFinderError::Internal(e.to_string()))?;
         
         String::from_utf8(buffer)
-            .map_err(|e| ArbFinderError::InternalError(e.to_string()))
+            .map_err(|e| ArbFinderError::Internal(e.to_string()))
     }
 }
 
@@ -276,7 +294,7 @@ impl MetricsServer {
             .with_state(Arc::clone(&self.metrics_collector));
         
         let listener = TcpListener::bind(format!("0.0.0.0:{}", self.port)).await
-            .map_err(|e| ArbFinderError::InternalError(e.to_string()))?;
+            .map_err(|e| ArbFinderError::Internal(e.to_string()))?;
         
         info!("Metrics server starting on port {}", self.port);
         

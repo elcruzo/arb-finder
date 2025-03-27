@@ -27,7 +27,7 @@ pub struct Balance {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Position {
     pub symbol: String,
-    pub side: Side,
+    pub side: OrderSide,
     pub size: Decimal,
     pub entry_price: Decimal,
     pub current_price: Decimal,
@@ -89,37 +89,38 @@ impl Portfolio {
 
     pub fn add_pending_order(&mut self, order: Order) {
         // Lock funds for the order
+        let symbol_str = order.symbol.to_pair();
         match order.side {
-            Side::Buy => {
+            OrderSide::Buy => {
                 // Lock quote currency (e.g., USDT for BTC/USDT)
-                let quote_asset = self.extract_quote_asset(&order.symbol);
-                let required_amount = order.price * order.amount;
+                let quote_asset = self.extract_quote_asset(&symbol_str);
+                let required_amount = order.price.unwrap_or_default() * order.quantity;
                 self.lock_balance(&quote_asset, required_amount);
             }
-            Side::Sell => {
+            OrderSide::Sell => {
                 // Lock base currency (e.g., BTC for BTC/USDT)
-                let base_asset = self.extract_base_asset(&order.symbol);
-                self.lock_balance(&base_asset, order.amount);
+                let base_asset = self.extract_base_asset(&symbol_str);
+                self.lock_balance(&base_asset, order.quantity);
             }
         }
         
-        self.pending_orders.insert(order.id.clone(), order);
+        self.pending_orders.insert(order.id.to_string(), order);
         self.last_updated = Utc::now();
     }
 
-    pub fn remove_pending_order(&mut self, order_id: &str) {
-        if let Some(order) = self.pending_orders.remove(order_id) {
+    pub fn remove_pending_order(&mut self, order_id: &OrderId) {
+        if let Some(order) = self.pending_orders.remove(&order_id.to_string()) {
             // Unlock funds
+            let symbol_str = order.symbol.to_pair();
             match order.side {
-                Side::Buy => {
-                    let quote_asset = self.extract_quote_asset(&order.symbol);
-                    let locked_amount = order.price * (order.amount - order.filled_amount);
+                OrderSide::Buy => {
+                    let quote_asset = self.extract_quote_asset(&symbol_str);
+                    let locked_amount = order.price.unwrap_or_default() * order.remaining_quantity;
                     self.unlock_balance(&quote_asset, locked_amount);
                 }
-                Side::Sell => {
-                    let base_asset = self.extract_base_asset(&order.symbol);
-                    let locked_amount = order.amount - order.filled_amount;
-                    self.unlock_balance(&base_asset, locked_amount);
+                OrderSide::Sell => {
+                    let base_asset = self.extract_base_asset(&symbol_str);
+                    self.unlock_balance(&base_asset, order.remaining_quantity);
                 }
             }
         }
@@ -127,31 +128,33 @@ impl Portfolio {
     }
 
     pub fn update_order(&mut self, updated_order: Order) {
-        if let Some(existing_order) = self.pending_orders.get_mut(&updated_order.id) {
-            let filled_diff = updated_order.filled_amount - existing_order.filled_amount;
+        let order_id_str = updated_order.id.to_string();
+        let should_remove = updated_order.status == OrderStatus::Filled || 
+                            updated_order.status == OrderStatus::Canceled;
+        
+        if let Some(existing_order) = self.pending_orders.get(&order_id_str) {
+            let filled_diff = updated_order.filled_quantity - existing_order.filled_quantity;
             
             if filled_diff > Decimal::ZERO {
                 // Process partial or full fill
+                let symbol_str = updated_order.symbol.to_pair();
+                let base_asset = self.extract_base_asset(&symbol_str);
+                let quote_asset = self.extract_quote_asset(&symbol_str);
+                
                 match updated_order.side {
-                    Side::Buy => {
-                        let base_asset = self.extract_base_asset(&updated_order.symbol);
-                        let quote_asset = self.extract_quote_asset(&updated_order.symbol);
-                        
+                    OrderSide::Buy => {
                         // Add base asset
-                        self.add_balance(base_asset, filled_diff);
+                        self.add_balance(base_asset.clone(), filled_diff);
                         
                         // Unlock and remove quote asset
-                        let quote_amount = updated_order.price * filled_diff;
+                        let quote_amount = updated_order.price.unwrap_or_default() * filled_diff;
                         self.unlock_balance(&quote_asset, quote_amount);
                         self.remove_balance(&quote_asset, quote_amount);
                     }
-                    Side::Sell => {
-                        let base_asset = self.extract_base_asset(&updated_order.symbol);
-                        let quote_asset = self.extract_quote_asset(&updated_order.symbol);
-                        
+                    OrderSide::Sell => {
                         // Add quote asset
-                        let quote_amount = updated_order.price * filled_diff;
-                        self.add_balance(quote_asset, quote_amount);
+                        let quote_amount = updated_order.price.unwrap_or_default() * filled_diff;
+                        self.add_balance(quote_asset.clone(), quote_amount);
                         
                         // Unlock and remove base asset
                         self.unlock_balance(&base_asset, filled_diff);
@@ -159,15 +162,16 @@ impl Portfolio {
                     }
                 }
             }
-            
-            *existing_order = updated_order.clone();
-            
-            // Remove if fully filled or canceled
-            if updated_order.status == OrderStatus::Filled || 
-               updated_order.status == OrderStatus::Canceled {
-                self.remove_pending_order(&updated_order.id);
-            }
         }
+        
+        // Update or insert the order
+        self.pending_orders.insert(order_id_str.clone(), updated_order.clone());
+        
+        // Remove if fully filled or canceled
+        if should_remove {
+            self.remove_pending_order(&updated_order.id);
+        }
+        
         self.last_updated = Utc::now();
     }
 
@@ -181,7 +185,12 @@ impl Portfolio {
     pub fn update_position_price(&mut self, symbol: &str, current_price: Decimal) {
         if let Some(position) = self.positions.get_mut(symbol) {
             position.current_price = current_price;
-            position.unrealized_pnl = self.calculate_unrealized_pnl(position);
+            // Calculate PnL directly to avoid borrowing issues
+            let pnl = match position.side {
+                OrderSide::Buy => (current_price - position.entry_price) * position.size,
+                OrderSide::Sell => (position.entry_price - current_price) * position.size,
+            };
+            position.unrealized_pnl = pnl;
             position.updated_at = Utc::now();
         }
         self.last_updated = Utc::now();
@@ -262,11 +271,28 @@ impl Portfolio {
         }
     }
 
+    fn calculate_unrealized_pnl_static(
+        &self,
+        side: OrderSide,
+        size: Decimal,
+        entry_price: Decimal,
+        current_price: Decimal,
+    ) -> Decimal {
+        match side {
+            OrderSide::Buy => (current_price - entry_price) * size,
+            OrderSide::Sell => (entry_price - current_price) * size,
+        }
+    }
+
     fn calculate_pnl_for_trade(&mut self, trade: &Trade) {
         // Update or create position
-        let position = self.positions.entry(trade.symbol.clone()).or_insert(Position {
-            symbol: trade.symbol.clone(),
-            side: trade.side,
+        let trade_side = match trade.side {
+            arbfinder_core::Side::Bid => OrderSide::Buy,
+            arbfinder_core::Side::Ask => OrderSide::Sell,
+        };
+        let position = self.positions.entry(trade.symbol.to_pair()).or_insert(Position {
+            symbol: trade.symbol.to_pair(),
+            side: trade_side,
             size: Decimal::ZERO,
             entry_price: Decimal::ZERO,
             current_price: trade.price,
@@ -277,43 +303,43 @@ impl Portfolio {
         });
 
         // Simple position tracking (can be enhanced for more complex scenarios)
-        match trade.side {
-            Side::Buy => {
-                if position.side == Side::Sell && position.size > Decimal::ZERO {
+        match trade_side {
+            OrderSide::Buy => {
+                if position.side == OrderSide::Sell && position.size > Decimal::ZERO {
                     // Closing short position
-                    let close_amount = trade.amount.min(position.size);
+                    let close_amount = trade.quantity.min(position.size);
                     let pnl = (position.entry_price - trade.price) * close_amount;
                     position.realized_pnl += pnl;
                     position.size -= close_amount;
                     
                     if position.size == Decimal::ZERO {
-                        position.side = Side::Buy;
+                        position.side = OrderSide::Buy;
                     }
                 } else {
                     // Opening or adding to long position
-                    let new_size = position.size + trade.amount;
-                    position.entry_price = ((position.entry_price * position.size) + (trade.price * trade.amount)) / new_size;
+                    let new_size = position.size + trade.quantity;
+                    position.entry_price = ((position.entry_price * position.size) + (trade.price * trade.quantity)) / new_size;
                     position.size = new_size;
-                    position.side = Side::Buy;
+                    position.side = OrderSide::Buy;
                 }
             }
-            Side::Sell => {
-                if position.side == Side::Buy && position.size > Decimal::ZERO {
+            OrderSide::Sell => {
+                if position.side == OrderSide::Buy && position.size > Decimal::ZERO {
                     // Closing long position
-                    let close_amount = trade.amount.min(position.size);
+                    let close_amount = trade.quantity.min(position.size);
                     let pnl = (trade.price - position.entry_price) * close_amount;
                     position.realized_pnl += pnl;
                     position.size -= close_amount;
                     
                     if position.size == Decimal::ZERO {
-                        position.side = Side::Sell;
+                        position.side = OrderSide::Sell;
                     }
                 } else {
                     // Opening or adding to short position
-                    let new_size = position.size + trade.amount;
-                    position.entry_price = ((position.entry_price * position.size) + (trade.price * trade.amount)) / new_size;
+                    let new_size = position.size + trade.quantity;
+                    position.entry_price = ((position.entry_price * position.size) + (trade.price * trade.quantity)) / new_size;
                     position.size = new_size;
-                    position.side = Side::Sell;
+                    position.side = OrderSide::Sell;
                 }
             }
         }
@@ -324,8 +350,8 @@ impl Portfolio {
 
     fn calculate_unrealized_pnl(&self, position: &Position) -> Decimal {
         match position.side {
-            Side::Buy => (position.current_price - position.entry_price) * position.size,
-            Side::Sell => (position.entry_price - position.current_price) * position.size,
+            OrderSide::Buy => (position.current_price - position.entry_price) * position.size,
+            OrderSide::Sell => (position.entry_price - position.current_price) * position.size,
         }
     }
 }

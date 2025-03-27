@@ -5,6 +5,7 @@ pub mod normalizer;
 pub mod heartbeat;
 pub mod manager;
 pub mod rate_limiter;
+pub mod prelude;
 
 pub use traits::*;
 pub use websocket::*;
