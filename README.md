@@ -44,7 +44,7 @@ ArbFinder/
 1. Clone the repository:
 
 ```bash
-git clone https://github.com/elcruzo/arbfinder.git
+git clone https://github.com/elcruzo/arb-finder.git
 cd arbfinder
 ```
 

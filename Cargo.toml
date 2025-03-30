@@ -2,10 +2,10 @@
 name = "arbfinder"
 version = "0.1.0"
 edition = "2021"
-authors = ["Your Name <your.email@example.com>"]
+authors = ["Your Name <ayomideadekoya266@gmail.com>"]
 description = "A cryptocurrency arbitrage finder and trading bot"
 license = "MIT"
-repository = "https://github.com/yourusername/arbfinder"
+repository = "https://github.com/elcruzo/arb-finder"
 keywords = ["cryptocurrency", "arbitrage", "trading", "bot", "finance"]
 categories = ["finance", "algorithms"]
 
@@ -33,9 +33,9 @@ members = [
 [workspace.package]
 version = "0.1.0"
 edition = "2021"
-authors = ["Your Name <your.email@example.com>"]
+authors = ["Your Name <ayomideadekoya266@gmail.com>"]
 license = "MIT"
-repository = "https://github.com/yourusername/arbfinder"
+repository = "https://github.com/elcruzo/arb-finder"
 
 [workspace.dependencies]
 # Async runtime and utilities
