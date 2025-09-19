@@ -36,23 +36,26 @@ ArbFinder/
 
 ### Prerequisites
 
-- Rust 1.70+ 
+- Rust 1.70+
 - Exchange API credentials (for live trading)
 
 ### Installation
 
 1. Clone the repository:
+
 ```bash
-git clone https://github.com/yourusername/arbfinder.git
+git clone https://github.com/elcruzo/arbfinder.git
 cd arbfinder
 ```
 
 2. Build the project:
+
 ```bash
 cargo build --release
 ```
 
 3. Copy and configure the settings:
+
 ```bash
 cp config.toml my-config.toml
 # Edit my-config.toml with your exchange credentials
