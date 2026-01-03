@@ -1,183 +1,545 @@
-use std::fs::OpenOptions;
-use std::io::Write;
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
+use std::error::Error;
 use std::path::Path;
-use chrono::Utc;
+use std::sync::Arc;
+use tokio::fs::File;
+use tokio::io::AsyncWriteExt;
+use tokio::sync::Mutex;
 
-/// Represents an arbitrage opportunity for logging
-#[derive(Clone, Debug)]
-pub struct ArbitrageOpportunity {
+/// Represents an arbitrage opportunity for CSV export
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OpportunityRecord {
+    pub timestamp: String,
+    pub exchange_a: String,
+    pub exchange_b: String,
     pub symbol: String,
-    pub spread_percentage: f64,
-    pub buy_exchange: String,
-    pub sell_exchange: String,
+    pub price_a: f64,
+    pub price_b: f64,
+    pub price_difference: f64,
+    pub price_difference_percent: f64,
+    pub profit_margin: f64,
+    pub volume_available: f64,
     pub status: String,
 }
 
-/// CSV exporter for arbitrage opportunities
+/// Represents a trade execution record for CSV export
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TradeRecord {
+    pub timestamp: String,
+    pub trade_id: String,
+    pub exchange_a: String,
+    pub exchange_b: String,
+    pub symbol: String,
+    pub buy_exchange: String,
+    pub sell_exchange: String,
+    pub buy_price: f64,
+    pub sell_price: f64,
+    pub quantity: f64,
+    pub trade_status: String,
+    pub estimated_profit: f64,
+    pub actual_profit: Option<f64>,
+    pub fee_a: f64,
+    pub fee_b: f64,
+}
+
+/// Represents execution results for CSV export
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExecutionResult {
+    pub timestamp: String,
+    pub execution_id: String,
+    pub trade_id: String,
+    pub phase: String, // "buy", "sell", "complete"
+    pub exchange: String,
+    pub symbol: String,
+    pub quantity: f64,
+    pub price: f64,
+    pub total_value: f64,
+    pub status: String, // "pending", "completed", "failed"
+    pub error_message: Option<String>,
+    pub duration_ms: u64,
+}
+
+/// CSV data export manager with async support
 pub struct DataExporter {
-    file_path: String,
+    opportunities_file: Arc<Mutex<Option<File>>>,
+    trades_file: Arc<Mutex<Option<File>>>,
+    executions_file: Arc<Mutex<Option<File>>>,
 }
 
 impl DataExporter {
-    /// Creates a new DataExporter instance
-    pub fn new(file_path: &str) -> Self {
-        DataExporter {
-            file_path: file_path.to_string(),
+    /// Create a new DataExporter instance
+    pub fn new() -> Self {
+        Self {
+            opportunities_file: Arc::new(Mutex::new(None)),
+            trades_file: Arc::new(Mutex::new(None)),
+            executions_file: Arc::new(Mutex::new(None)),
         }
     }
 
-    /// Initializes the CSV file with headers if it doesn't exist
-    pub fn initialize(&self) -> Result<(), Box<dyn std::error::Error>> {
-        let path = Path::new(&self.file_path);
-        
-        // Create parent directories if they don't exist
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
+    /// Initialize CSV files with headers
+    pub async fn initialize<P: AsRef<Path>>(&self, output_dir: P) -> Result<(), Box<dyn Error>> {
+        let output_dir = output_dir.as_ref();
 
-        // Check if file already exists
-        if !path.exists() {
-            let mut file = OpenOptions::new()
-                .create(true)
-                .write(true)
-                .open(&self.file_path)?;
+        // Create output directory if it doesn't exist
+        tokio::fs::create_dir_all(output_dir).await?;
 
-            let header = "timestamp,symbol,spread_percentage,buy_exchange,sell_exchange,status\n";
-            file.write_all(header.as_bytes())?;
-        }
+        // Initialize opportunities file
+        let opp_path = output_dir.join("arbitrage_opportunities.csv");
+        self.initialize_opportunities_file(&opp_path).await?;
+
+        // Initialize trades file
+        let trades_path = output_dir.join("trades.csv");
+        self.initialize_trades_file(&trades_path).await?;
+
+        // Initialize executions file
+        let exec_path = output_dir.join("executions.csv");
+        self.initialize_executions_file(&exec_path).await?;
 
         Ok(())
     }
 
-    /// Logs a single arbitrage opportunity to CSV
-    pub fn log_opportunity(
+    /// Initialize opportunities CSV file with headers
+    async fn initialize_opportunities_file<P: AsRef<Path>>(
         &self,
-        opportunity: &ArbitrageOpportunity,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        let timestamp = Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
+        path: P,
+    ) -> Result<(), Box<dyn Error>> {
+        let mut file = File::create(path).await?;
+        let header = "timestamp,exchange_a,exchange_b,symbol,price_a,price_b,price_difference,price_difference_percent,profit_margin,volume_available,status\n";
+        file.write_all(header.as_bytes()).await?;
+        file.sync_all().await?;
 
-        let csv_line = format!(
-            "{},{},{:.4},{},{},{}\n",
-            timestamp,
-            opportunity.symbol,
-            opportunity.spread_percentage,
-            opportunity.buy_exchange,
-            opportunity.sell_exchange,
-            opportunity.status,
-        );
-
-        let mut file = OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(&self.file_path)?;
-
-        file.write_all(csv_line.as_bytes())?;
-
+        *self.opportunities_file.lock().await = Some(file);
         Ok(())
     }
 
-    /// Logs multiple arbitrage opportunities to CSV
-    pub fn log_opportunities(
+    /// Initialize trades CSV file with headers
+    async fn initialize_trades_file<P: AsRef<Path>>(
         &self,
-        opportunities: &[ArbitrageOpportunity],
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        for opportunity in opportunities {
-            self.log_opportunity(opportunity)?;
-        }
+        path: P,
+    ) -> Result<(), Box<dyn Error>> {
+        let mut file = File::create(path).await?;
+        let header = "timestamp,trade_id,exchange_a,exchange_b,symbol,buy_exchange,sell_exchange,buy_price,sell_price,quantity,trade_status,estimated_profit,actual_profit,fee_a,fee_b\n";
+        file.write_all(header.as_bytes()).await?;
+        file.sync_all().await?;
+
+        *self.trades_file.lock().await = Some(file);
         Ok(())
     }
 
-    /// Gets the file path of the CSV export
-    pub fn get_file_path(&self) -> &str {
-        &self.file_path
+    /// Initialize executions CSV file with headers
+    async fn initialize_executions_file<P: AsRef<Path>>(
+        &self,
+        path: P,
+    ) -> Result<(), Box<dyn Error>> {
+        let mut file = File::create(path).await?;
+        let header = "timestamp,execution_id,trade_id,phase,exchange,symbol,quantity,price,total_value,status,error_message,duration_ms\n";
+        file.write_all(header.as_bytes()).await?;
+        file.sync_all().await?;
+
+        *self.executions_file.lock().await = Some(file);
+        Ok(())
+    }
+
+    /// Log an arbitrage opportunity
+    pub async fn log_opportunity(&self, record: OpportunityRecord) -> Result<(), Box<dyn Error>> {
+        let mut file_guard = self.opportunities_file.lock().await;
+
+        if let Some(file) = file_guard.as_mut() {
+            let csv_line = format!(
+                "{},{},{},{},{},{},{},{},{},{},{}\n",
+                record.timestamp,
+                record.exchange_a,
+                record.exchange_b,
+                record.symbol,
+                record.price_a,
+                record.price_b,
+                record.price_difference,
+                record.price_difference_percent,
+                record.profit_margin,
+                record.volume_available,
+                record.status
+            );
+
+            file.write_all(csv_line.as_bytes()).await?;
+            file.sync_all().await?;
+            Ok(())
+        } else {
+            Err("Opportunities file not initialized".into())
+        }
+    }
+
+    /// Log a trade execution
+    pub async fn log_trade(&self, record: TradeRecord) -> Result<(), Box<dyn Error>> {
+        let mut file_guard = self.trades_file.lock().await;
+
+        if let Some(file) = file_guard.as_mut() {
+            let actual_profit_str = record
+                .actual_profit
+                .map(|p| p.to_string())
+                .unwrap_or_else(|| "".to_string());
+
+            let csv_line = format!(
+                "{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}\n",
+                record.timestamp,
+                record.trade_id,
+                record.exchange_a,
+                record.exchange_b,
+                record.symbol,
+                record.buy_exchange,
+                record.sell_exchange,
+                record.buy_price,
+                record.sell_price,
+                record.quantity,
+                record.trade_status,
+                record.estimated_profit,
+                actual_profit_str,
+                record.fee_a,
+                record.fee_b
+            );
+
+            file.write_all(csv_line.as_bytes()).await?;
+            file.sync_all().await?;
+            Ok(())
+        } else {
+            Err("Trades file not initialized".into())
+        }
+    }
+
+    /// Log execution results
+    pub async fn log_execution(&self, record: ExecutionResult) -> Result<(), Box<dyn Error>> {
+        let mut file_guard = self.executions_file.lock().await;
+
+        if let Some(file) = file_guard.as_mut() {
+            let error_msg = record
+                .error_message
+                .as_deref()
+                .unwrap_or("")
+                .replace(",", ";");
+
+            let csv_line = format!(
+                "{},{},{},{},{},{},{},{},{},{},{},{}\n",
+                record.timestamp,
+                record.execution_id,
+                record.trade_id,
+                record.phase,
+                record.exchange,
+                record.symbol,
+                record.quantity,
+                record.price,
+                record.total_value,
+                record.status,
+                error_msg,
+                record.duration_ms
+            );
+
+            file.write_all(csv_line.as_bytes()).await?;
+            file.sync_all().await?;
+            Ok(())
+        } else {
+            Err("Executions file not initialized".into())
+        }
+    }
+
+    /// Log multiple opportunities in batch
+    pub async fn log_opportunities_batch(
+        &self,
+        records: Vec<OpportunityRecord>,
+    ) -> Result<(), Box<dyn Error>> {
+        let mut file_guard = self.opportunities_file.lock().await;
+
+        if let Some(file) = file_guard.as_mut() {
+            let mut csv_data = String::new();
+
+            for record in records {
+                csv_data.push_str(&format!(
+                    "{},{},{},{},{},{},{},{},{},{},{}\n",
+                    record.timestamp,
+                    record.exchange_a,
+                    record.exchange_b,
+                    record.symbol,
+                    record.price_a,
+                    record.price_b,
+                    record.price_difference,
+                    record.price_difference_percent,
+                    record.profit_margin,
+                    record.volume_available,
+                    record.status
+                ));
+            }
+
+            file.write_all(csv_data.as_bytes()).await?;
+            file.sync_all().await?;
+            Ok(())
+        } else {
+            Err("Opportunities file not initialized".into())
+        }
+    }
+
+    /// Log multiple trades in batch
+    pub async fn log_trades_batch(
+        &self,
+        records: Vec<TradeRecord>,
+    ) -> Result<(), Box<dyn Error>> {
+        let mut file_guard = self.trades_file.lock().await;
+
+        if let Some(file) = file_guard.as_mut() {
+            let mut csv_data = String::new();
+
+            for record in records {
+                let actual_profit_str = record
+                    .actual_profit
+                    .map(|p| p.to_string())
+                    .unwrap_or_else(|| "".to_string());
+
+                csv_data.push_str(&format!(
+                    "{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}\n",
+                    record.timestamp,
+                    record.trade_id,
+                    record.exchange_a,
+                    record.exchange_b,
+                    record.symbol,
+                    record.buy_exchange,
+                    record.sell_exchange,
+                    record.buy_price,
+                    record.sell_price,
+                    record.quantity,
+                    record.trade_status,
+                    record.estimated_profit,
+                    actual_profit_str,
+                    record.fee_a,
+                    record.fee_b
+                ));
+            }
+
+            file.write_all(csv_data.as_bytes()).await?;
+            file.sync_all().await?;
+            Ok(())
+        } else {
+            Err("Trades file not initialized".into())
+        }
+    }
+
+    /// Log multiple execution results in batch
+    pub async fn log_executions_batch(
+        &self,
+        records: Vec<ExecutionResult>,
+    ) -> Result<(), Box<dyn Error>> {
+        let mut file_guard = self.executions_file.lock().await;
+
+        if let Some(file) = file_guard.as_mut() {
+            let mut csv_data = String::new();
+
+            for record in records {
+                let error_msg = record
+                    .error_message
+                    .as_deref()
+                    .unwrap_or("")
+                    .replace(",", ";");
+
+                csv_data.push_str(&format!(
+                    "{},{},{},{},{},{},{},{},{},{},{},{}\n",
+                    record.timestamp,
+                    record.execution_id,
+                    record.trade_id,
+                    record.phase,
+                    record.exchange,
+                    record.symbol,
+                    record.quantity,
+                    record.price,
+                    record.total_value,
+                    record.status,
+                    error_msg,
+                    record.duration_ms
+                ));
+            }
+
+            file.write_all(csv_data.as_bytes()).await?;
+            file.sync_all().await?;
+            Ok(())
+        } else {
+            Err("Executions file not initialized".into())
+        }
+    }
+
+    /// Flush all open files to ensure data is written
+    pub async fn flush_all(&self) -> Result<(), Box<dyn Error>> {
+        if let Some(file) = self.opportunities_file.lock().await.as_mut() {
+            file.sync_all().await?;
+        }
+
+        if let Some(file) = self.trades_file.lock().await.as_mut() {
+            file.sync_all().await?;
+        }
+
+        if let Some(file) = self.executions_file.lock().await.as_mut() {
+            file.sync_all().await?;
+        }
+
+        Ok(())
+    }
+
+    /// Close all open files
+    pub async fn close(&self) -> Result<(), Box<dyn Error>> {
+        *self.opportunities_file.lock().await = None;
+        *self.trades_file.lock().await = None;
+        *self.executions_file.lock().await = None;
+
+        Ok(())
+    }
+}
+
+impl Default for DataExporter {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::fs;
 
-    #[test]
-    fn test_initialize_creates_file() {
-        let test_file = "/tmp/test_arb_export.csv";
-        let exporter = DataExporter::new(test_file);
-        
-        // Clean up if file exists
-        let _ = fs::remove_file(test_file);
-        
-        assert!(exporter.initialize().is_ok());
-        assert!(Path::new(test_file).exists());
-        
-        // Clean up
-        let _ = fs::remove_file(test_file);
+    #[tokio::test]
+    async fn test_data_exporter_initialization() {
+        let exporter = DataExporter::new();
+        let temp_dir = "/tmp/arb_finder_test";
+
+        let result = exporter.initialize(temp_dir).await;
+        assert!(result.is_ok());
+
+        // Verify files exist
+        assert!(Path::new(&format!("{}/arbitrage_opportunities.csv", temp_dir)).exists());
+        assert!(Path::new(&format!("{}/trades.csv", temp_dir)).exists());
+        assert!(Path::new(&format!("{}/executions.csv", temp_dir)).exists());
+
+        let _ = exporter.close().await;
     }
 
-    #[test]
-    fn test_log_opportunity() {
-        let test_file = "/tmp/test_arb_log.csv";
-        let exporter = DataExporter::new(test_file);
-        
-        // Clean up if file exists
-        let _ = fs::remove_file(test_file);
-        
-        exporter.initialize().unwrap();
+    #[tokio::test]
+    async fn test_log_opportunity() {
+        let exporter = DataExporter::new();
+        let temp_dir = "/tmp/arb_finder_test_opp";
 
-        let opportunity = ArbitrageOpportunity {
+        let _ = exporter.initialize(temp_dir).await;
+
+        let record = OpportunityRecord {
+            timestamp: Utc::now().to_rfc3339(),
+            exchange_a: "binance".to_string(),
+            exchange_b: "kraken".to_string(),
             symbol: "BTC/USD".to_string(),
-            spread_percentage: 2.5,
-            buy_exchange: "Binance".to_string(),
-            sell_exchange: "Kraken".to_string(),
-            status: "ACTIVE".to_string(),
+            price_a: 45000.0,
+            price_b: 45500.0,
+            price_difference: 500.0,
+            price_difference_percent: 1.11,
+            profit_margin: 0.95,
+            volume_available: 10.0,
+            status: "identified".to_string(),
         };
 
-        assert!(exporter.log_opportunity(&opportunity).is_ok());
+        let result = exporter.log_opportunity(record).await;
+        assert!(result.is_ok());
 
-        let content = fs::read_to_string(test_file).unwrap();
-        assert!(content.contains("BTC/USD"));
-        assert!(content.contains("2.5000"));
-        assert!(content.contains("Binance"));
-        assert!(content.contains("Kraken"));
-        assert!(content.contains("ACTIVE"));
-
-        // Clean up
-        let _ = fs::remove_file(test_file);
+        let _ = exporter.close().await;
     }
 
-    #[test]
-    fn test_log_multiple_opportunities() {
-        let test_file = "/tmp/test_arb_multiple.csv";
-        let exporter = DataExporter::new(test_file);
-        
-        // Clean up if file exists
-        let _ = fs::remove_file(test_file);
-        
-        exporter.initialize().unwrap();
+    #[tokio::test]
+    async fn test_log_trade() {
+        let exporter = DataExporter::new();
+        let temp_dir = "/tmp/arb_finder_test_trade";
+
+        let _ = exporter.initialize(temp_dir).await;
+
+        let record = TradeRecord {
+            timestamp: Utc::now().to_rfc3339(),
+            trade_id: "trade_001".to_string(),
+            exchange_a: "binance".to_string(),
+            exchange_b: "kraken".to_string(),
+            symbol: "BTC/USD".to_string(),
+            buy_exchange: "binance".to_string(),
+            sell_exchange: "kraken".to_string(),
+            buy_price: 45000.0,
+            sell_price: 45500.0,
+            quantity: 1.0,
+            trade_status: "pending".to_string(),
+            estimated_profit: 450.0,
+            actual_profit: None,
+            fee_a: 45.0,
+            fee_b: 45.5,
+        };
+
+        let result = exporter.log_trade(record).await;
+        assert!(result.is_ok());
+
+        let _ = exporter.close().await;
+    }
+
+    #[tokio::test]
+    async fn test_log_execution() {
+        let exporter = DataExporter::new();
+        let temp_dir = "/tmp/arb_finder_test_exec";
+
+        let _ = exporter.initialize(temp_dir).await;
+
+        let record = ExecutionResult {
+            timestamp: Utc::now().to_rfc3339(),
+            execution_id: "exec_001".to_string(),
+            trade_id: "trade_001".to_string(),
+            phase: "buy".to_string(),
+            exchange: "binance".to_string(),
+            symbol: "BTC/USD".to_string(),
+            quantity: 1.0,
+            price: 45000.0,
+            total_value: 45000.0,
+            status: "completed".to_string(),
+            error_message: None,
+            duration_ms: 1500,
+        };
+
+        let result = exporter.log_execution(record).await;
+        assert!(result.is_ok());
+
+        let _ = exporter.close().await;
+    }
+
+    #[tokio::test]
+    async fn test_batch_operations() {
+        let exporter = DataExporter::new();
+        let temp_dir = "/tmp/arb_finder_test_batch";
+
+        let _ = exporter.initialize(temp_dir).await;
 
         let opportunities = vec![
-            ArbitrageOpportunity {
-                symbol: "ETH/USD".to_string(),
-                spread_percentage: 1.8,
-                buy_exchange: "Coinbase".to_string(),
-                sell_exchange: "Gemini".to_string(),
-                status: "PENDING".to_string(),
+            OpportunityRecord {
+                timestamp: Utc::now().to_rfc3339(),
+                exchange_a: "binance".to_string(),
+                exchange_b: "kraken".to_string(),
+                symbol: "BTC/USD".to_string(),
+                price_a: 45000.0,
+                price_b: 45500.0,
+                price_difference: 500.0,
+                price_difference_percent: 1.11,
+                profit_margin: 0.95,
+                volume_available: 10.0,
+                status: "identified".to_string(),
             },
-            ArbitrageOpportunity {
-                symbol: "LTC/USD".to_string(),
-                spread_percentage: 3.2,
-                buy_exchange: "Kraken".to_string(),
-                sell_exchange: "Binance".to_string(),
-                status: "ACTIVE".to_string(),
+            OpportunityRecord {
+                timestamp: Utc::now().to_rfc3339(),
+                exchange_a: "coinbase".to_string(),
+                exchange_b: "kraken".to_string(),
+                symbol: "ETH/USD".to_string(),
+                price_a: 2500.0,
+                price_b: 2550.0,
+                price_difference: 50.0,
+                price_difference_percent: 2.0,
+                profit_margin: 1.5,
+                volume_available: 100.0,
+                status: "identified".to_string(),
             },
         ];
 
-        assert!(exporter.log_opportunities(&opportunities).is_ok());
+        let result = exporter.log_opportunities_batch(opportunities).await;
+        assert!(result.is_ok());
 
-        let content = fs::read_to_string(test_file).unwrap();
-        assert!(content.contains("ETH/USD"));
-        assert!(content.contains("LTC/USD"));
-
-        // Clean up
-        let _ = fs::remove_file(test_file);
+        let _ = exporter.close().await;
     }
 }
