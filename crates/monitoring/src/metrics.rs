@@ -2,12 +2,12 @@ use std::sync::Arc;
 use std::collections::HashMap;
 use prometheus::{
     Registry, Counter, Gauge, Histogram, HistogramOpts, Opts,
-    Encoder, TextEncoder, IntCounterVec, IntGaugeVec, HistogramVec,
+    Encoder, TextEncoder, IntCounterVec, HistogramVec,
 };
 use axum::{
     extract::State,
     http::StatusCode,
-    response::{IntoResponse, Response},
+    response::IntoResponse,
     routing::get,
     Router,
 };

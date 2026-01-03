@@ -5,7 +5,7 @@
 use std::collections::HashMap;
 use rust_decimal::Decimal;
 use rust_decimal::prelude::ToPrimitive;
-use tracing::{info, debug};
+use tracing::debug;
 
 use arbfinder_core::prelude::*;
 
@@ -45,15 +45,24 @@ pub struct CrossExchangeArbitrageDetector {
 }
 
 impl CrossExchangeArbitrageDetector {
+    /// Create a new arbitrage detector
+    /// 
+    /// # Arguments
+    /// * `min_profit_bps` - Minimum profit threshold in basis points (10 bps = 0.1%)
+    /// * `min_volume` - Minimum volume threshold in quote currency (e.g., USDT)
     pub fn new(min_profit_bps: i32, min_volume: Decimal) -> Self {
         let mut trading_fees = HashMap::new();
-        // Default fees (0.1% = 10 bps)
-        trading_fees.insert(VenueId::Binance, Decimal::new(1, 3));
-        trading_fees.insert(VenueId::Coinbase, Decimal::new(5, 3));
-        trading_fees.insert(VenueId::Kraken, Decimal::new(26, 4));
+        // Default fees as decimal values:
+        // Binance: 0.1% = 0.001
+        // Coinbase: 0.5% = 0.005
+        // Kraken: 0.26% = 0.0026
+        trading_fees.insert(VenueId::Binance, Decimal::new(1, 3));   // 0.001 = 0.1%
+        trading_fees.insert(VenueId::Coinbase, Decimal::new(5, 3));  // 0.005 = 0.5%
+        trading_fees.insert(VenueId::Kraken, Decimal::new(26, 4));   // 0.0026 = 0.26%
         
         Self {
-            min_profit_threshold: Decimal::new(min_profit_bps as i64, 4), // Convert bps to decimal
+            // Store threshold directly in bps (e.g., 10 = 10 bps)
+            min_profit_threshold: Decimal::from(min_profit_bps),
             min_volume_threshold: min_volume,
             trading_fees,
         }
@@ -124,23 +133,27 @@ impl CrossExchangeArbitrageDetector {
             return None;
         }
         
-        // Calculate gross profit percentage
-        let gross_profit_pct = ((sell_price - buy_price) / buy_price) * Decimal::from(10000); // in bps
+        // Calculate gross profit percentage in bps (basis points)
+        // Formula: ((sell - buy) / buy) * 10000 = profit in bps
+        let gross_profit_bps = ((sell_price - buy_price) / buy_price) * Decimal::from(10000);
         
-        // Calculate fees
+        // Calculate fees (fees are stored as decimals, e.g., 0.001 = 0.1%)
         let buy_fee = self.trading_fees.get(&buy_venue)
             .copied()
-            .unwrap_or(Decimal::new(1, 3));
+            .unwrap_or(Decimal::new(1, 3)); // Default 0.1%
         let sell_fee = self.trading_fees.get(&sell_venue)
             .copied()
-            .unwrap_or(Decimal::new(1, 3));
+            .unwrap_or(Decimal::new(1, 3)); // Default 0.1%
         
-        // Calculate net profit after fees
-        let fee_pct = (buy_fee + sell_fee) * Decimal::from(10000); // Convert to bps
-        let net_profit_pct = gross_profit_pct - fee_pct;
+        // Convert fees to bps: 0.001 * 10000 = 10 bps
+        let total_fee_bps = (buy_fee + sell_fee) * Decimal::from(10000);
         
-        // Check if profit meets threshold
-        if net_profit_pct < self.min_profit_threshold * Decimal::from(10000) {
+        // Net profit in bps
+        let net_profit_bps = gross_profit_bps - total_fee_bps;
+        
+        // min_profit_threshold is already in bps (e.g., 10 = 10 bps = 0.1%)
+        // So we compare directly
+        if net_profit_bps < self.min_profit_threshold {
             return None;
         }
         
@@ -148,19 +161,22 @@ impl CrossExchangeArbitrageDetector {
         let max_volume = best_ask.quantity.min(best_bid.quantity);
         let volume_value = max_volume * buy_price;
         
-        // Check if volume meets threshold
+        // Check if volume meets threshold (min_volume_threshold is in quote currency)
         if volume_value < self.min_volume_threshold {
             return None;
         }
         
-        // Calculate estimated profit
-        let net_profit_per_unit = (sell_price - buy_price) - (buy_price * buy_fee) - (sell_price * sell_fee);
+        // Calculate estimated profit in quote currency
+        let gross_profit_per_unit = sell_price - buy_price;
+        let buy_fee_per_unit = buy_price * buy_fee;
+        let sell_fee_per_unit = sell_price * sell_fee;
+        let net_profit_per_unit = gross_profit_per_unit - buy_fee_per_unit - sell_fee_per_unit;
         let estimated_profit = net_profit_per_unit * max_volume;
         
         debug!(
             "Found arbitrage: Buy {} on {:?} @ {}, Sell on {:?} @ {}, Profit: {:.2} bps, Volume: {}",
             symbol.to_pair(), buy_venue, buy_price, sell_venue, sell_price,
-            net_profit_pct.to_f64().unwrap_or(0.0), max_volume
+            net_profit_bps.to_f64().unwrap_or(0.0), max_volume
         );
         
         Some(ArbitrageOpportunity {
@@ -169,7 +185,7 @@ impl CrossExchangeArbitrageDetector {
             sell_venue,
             buy_price,
             sell_price,
-            profit_percentage: net_profit_pct / Decimal::from(10000), // Convert back from bps
+            profit_percentage: net_profit_bps / Decimal::from(10000), // Convert bps to decimal (10 bps = 0.001)
             max_volume,
             estimated_profit,
             timestamp: chrono::Utc::now(),

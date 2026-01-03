@@ -1,6 +1,5 @@
 use arbfinder_core::{ArbFinderError, Result};
 use futures::{SinkExt, StreamExt};
-use serde_json::Value;
 use std::sync::Arc;
 use tokio::sync::{mpsc, Mutex, RwLock};
 use tokio::time::{sleep, Duration, Instant};

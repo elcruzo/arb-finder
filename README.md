@@ -177,7 +177,7 @@ cargo fmt
 
 ## Risk Management
 
-⚠️ **Important Safety Notes:**
+**IMPORTANT SAFETY NOTES:**
 
 1. **Start with Paper Trading**: Always test strategies with paper trading first
 2. **Use Small Amounts**: Start with small position sizes when going live

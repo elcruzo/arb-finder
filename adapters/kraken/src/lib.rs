@@ -6,8 +6,6 @@ use arbfinder_core::prelude::*;
 use arbfinder_exchange::prelude::*;
 use async_trait::async_trait;
 use reqwest::Client;
-use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
 

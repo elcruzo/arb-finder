@@ -1,0 +1,11 @@
+spread_binance_coinbase
+spread_binance_kraken
+spread_coinbase_kraken
+volume_binance
+volume_coinbase
+volume_kraken
+volatility
+hour_of_day
+day_of_week
+liquidity_score
+max_spread_bps

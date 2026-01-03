@@ -71,8 +71,8 @@ logs/
 *.sqlite3
 
 # Data files
-data/
-*.csv
+# data/
+# *.csv
 *.parquet
 *.arrow
 backups/

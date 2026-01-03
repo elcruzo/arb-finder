@@ -1,4 +1,4 @@
-use arbfinder_core::{ArbFinderError, Result};
+use arbfinder_core::Result;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{Mutex, RwLock};

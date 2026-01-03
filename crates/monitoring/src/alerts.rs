@@ -5,8 +5,6 @@ use tokio::sync::mpsc;
 use tracing::{info, warn, error};
 use reqwest::Client;
 
-use arbfinder_core::prelude::*;
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum AlertLevel {
     Info,

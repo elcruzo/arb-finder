@@ -1,8 +1,9 @@
 use std::collections::HashMap;
 use rust_decimal::Decimal;
 use rust_decimal::prelude::ToPrimitive;
-use chrono::{DateTime, Utc, Duration};
-use tracing::{warn, error};
+use chrono::{DateTime, Utc};
+use chrono::Duration as ChronoDuration;
+use tracing::warn;
 
 use arbfinder_core::prelude::*;
 
@@ -22,18 +23,14 @@ pub struct RiskConfig {
 impl Default for RiskConfig {
     fn default() -> Self {
         Self {
-            max_position_size: Decimal::from(10000),
-            max_daily_loss: Decimal::from(1000),
-            max_drawdown: Decimal::from(5000),
+            max_position_size: Decimal::from(100000), // $100k max position
+            max_daily_loss: Decimal::from(10000),     // $10k max daily loss
+            max_drawdown: Decimal::from(50000),       // $50k max drawdown
             max_leverage: Decimal::from(3),
             max_orders_per_minute: 60,
-            max_order_size: Decimal::from(1000),
-            min_order_size: Decimal::from(10),
-            allowed_symbols: vec![
-                "BTCUSDT".to_string(),
-                "ETHUSDT".to_string(),
-                "ADAUSDT".to_string(),
-            ],
+            max_order_size: Decimal::from(100000),    // $100k max order
+            min_order_size: Decimal::from(1),         // $1 min order (allows small test orders)
+            allowed_symbols: Vec::new(),              // Empty = allow all symbols
             blocked_symbols: Vec::new(),
         }
     }
@@ -134,14 +131,19 @@ impl RiskManager {
         self.order_history.push((Utc::now(), symbol.to_string()));
         
         // Clean old entries (keep only last hour)
-        let cutoff = Utc::now() - Duration::hours(1);
+        let cutoff = Utc::now() - ChronoDuration::hours(1);
         self.order_history.retain(|(timestamp, _)| *timestamp > cutoff);
     }
 
     fn is_symbol_allowed(&self, symbol: &str) -> bool {
+        // Normalize symbol for comparison (handle BTC_USDT, BTC/USDT, BTCUSDT formats)
+        let normalized = Self::normalize_symbol(symbol);
+        
         // Check if symbol is blocked
-        if self.config.blocked_symbols.contains(&symbol.to_string()) {
-            return false;
+        for blocked in &self.config.blocked_symbols {
+            if Self::normalize_symbol(blocked) == normalized {
+                return false;
+            }
         }
 
         // If allowed list is empty, allow all (except blocked)
@@ -149,8 +151,19 @@ impl RiskManager {
             return true;
         }
 
-        // Check if symbol is in allowed list
-        self.config.allowed_symbols.contains(&symbol.to_string())
+        // Check if symbol is in allowed list (normalized comparison)
+        self.config.allowed_symbols.iter().any(|allowed| {
+            Self::normalize_symbol(allowed) == normalized
+        })
+    }
+    
+    /// Normalize symbol format: BTC_USDT, BTC/USDT, BTCUSDT all become BTCUSDT
+    fn normalize_symbol(symbol: &str) -> String {
+        symbol
+            .to_uppercase()
+            .replace('_', "")
+            .replace('/', "")
+            .replace('-', "")
     }
 
     fn check_position_size_limit(&self, symbol: &str, side: OrderSide, amount: Decimal) -> bool {
@@ -173,7 +186,7 @@ impl RiskManager {
     }
 
     fn check_order_rate_limit(&self, symbol: &str) -> bool {
-        let cutoff = Utc::now() - Duration::minutes(1);
+        let cutoff = Utc::now() - ChronoDuration::minutes(1);
         let recent_orders = self.order_history.iter()
             .filter(|(timestamp, order_symbol)| {
                 *timestamp > cutoff && order_symbol == symbol
@@ -206,7 +219,7 @@ impl RiskManager {
     }
 
     fn get_orders_last_minute(&self) -> u32 {
-        let cutoff = Utc::now() - Duration::minutes(1);
+        let cutoff = Utc::now() - ChronoDuration::minutes(1);
         self.order_history.iter()
             .filter(|(timestamp, _)| *timestamp > cutoff)
             .count() as u32

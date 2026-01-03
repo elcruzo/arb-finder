@@ -4,11 +4,12 @@ use tracing::{info, error};
 use clap::{Parser, Subcommand};
 
 use arbfinder_core::prelude::*;
-use arbfinder_exchange::prelude::*;
 use arbfinder_strategy::prelude::*;
 use arbfinder_execution::prelude::*;
 use arbfinder_monitoring::prelude::*;
+use arbfinder_monitoring::alerts::AlertConfig;
 use rust_decimal::Decimal;
+use rust_decimal::prelude::FromPrimitive;
 
 // Exchange adapters
 use arbfinder_binance::BinanceAdapter;
@@ -254,15 +255,110 @@ fn load_config(config_path: &str) -> Result<AppConfig> {
     match fs::read_to_string(config_path) {
         Ok(contents) => {
             // Parse TOML config
-            // Note: In production, add toml = "0.8" to Cargo.toml and use proper parsing:
-            // let config: toml::Value = toml::from_str(&contents)
-            //     .map_err(|e| ArbFinderError::Config(format!("Failed to parse config: {}", e)))?;
+            let toml_value: toml::Value = toml::from_str(&contents)
+                .map_err(|e| ArbFinderError::Internal(format!("Failed to parse config: {}", e)))?;
             
-            // For now, return default config since we don't have toml dependency
-            // This is marked for future enhancement
-            info!("Config file found but using default configuration (TOML parsing not yet implemented)");
-            info!("To enable config parsing, add 'toml = \"0.8\"' to Cargo.toml dependencies");
-            Ok(AppConfig::default())
+            info!("Successfully parsed config file");
+            
+            // Extract execution config
+            let execution = if let Some(exec) = toml_value.get("execution") {
+                ExecutionConfig {
+                    max_position_size: exec.get("max_position_size")
+                        .and_then(|v| v.as_float())
+                        .map(|f| Decimal::from_f64_retain(f).unwrap_or_default())
+                        .unwrap_or(Decimal::from(1000)),
+                    max_daily_loss: exec.get("max_daily_loss")
+                        .and_then(|v| v.as_float())
+                        .map(|f| Decimal::from_f64_retain(f).unwrap_or_default())
+                        .unwrap_or(Decimal::from(500)),
+                    max_orders_per_second: exec.get("max_orders_per_second")
+                        .and_then(|v| v.as_integer())
+                        .unwrap_or(10) as u32,
+                    enable_paper_trading: exec.get("enable_paper_trading")
+                        .and_then(|v| v.as_bool())
+                        .unwrap_or(true),
+                }
+            } else {
+                ExecutionConfig::default()
+            };
+            
+            // Extract monitoring config
+            let monitoring = if let Some(mon) = toml_value.get("monitoring") {
+                MonitoringConfig {
+                    log_level: mon.get("log_level")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("info")
+                        .to_string(),
+                    metrics_port: mon.get("metrics_port")
+                        .and_then(|v| v.as_integer())
+                        .unwrap_or(9090) as u16,
+                    log_file: mon.get("log_file_path")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string()),
+                    enable_json_logs: mon.get("enable_json_logs")
+                        .and_then(|v| v.as_bool())
+                        .unwrap_or(true),
+                    alert_config: AlertConfig {
+                        webhook_url: mon.get("alert_webhook_url")
+                            .and_then(|v| v.as_str())
+                            .map(|s| s.to_string()),
+                        enable_console_alerts: mon.get("enable_alerts")
+                            .and_then(|v| v.as_bool())
+                            .unwrap_or(true),
+                        ..AlertConfig::default()
+                    },
+                    health_check_interval_secs: 30,
+                }
+            } else {
+                MonitoringConfig::default()
+            };
+            
+            // Extract exchange credentials
+            let exchanges = if let Some(exch) = toml_value.get("exchanges") {
+                ExchangeConfigs {
+                    binance: exch.get("binance").and_then(|b| {
+                        Some(ExchangeCredentials {
+                            api_key: b.get("api_key")?.as_str()?.to_string(),
+                            api_secret: b.get("api_secret")?.as_str()?.to_string(),
+                            passphrase: None,
+                            sandbox: b.get("sandbox").and_then(|v| v.as_bool()).unwrap_or(true),
+                        })
+                    }),
+                    coinbase: exch.get("coinbase").and_then(|c| {
+                        Some(ExchangeCredentials {
+                            api_key: c.get("api_key")?.as_str()?.to_string(),
+                            api_secret: c.get("api_secret")?.as_str()?.to_string(),
+                            passphrase: c.get("passphrase").and_then(|v| v.as_str()).map(|s| s.to_string()),
+                            sandbox: c.get("sandbox").and_then(|v| v.as_bool()).unwrap_or(true),
+                        })
+                    }),
+                    kraken: exch.get("kraken").and_then(|k| {
+                        Some(ExchangeCredentials {
+                            api_key: k.get("api_key")?.as_str()?.to_string(),
+                            api_secret: k.get("api_secret")?.as_str()?.to_string(),
+                            passphrase: None,
+                            sandbox: k.get("sandbox").and_then(|v| v.as_bool()).unwrap_or(true),
+                        })
+                    }),
+                }
+            } else {
+                ExchangeConfigs {
+                    binance: None,
+                    coinbase: None,
+                    kraken: None,
+                }
+            };
+            
+            info!("Configuration loaded successfully");
+            info!("  Paper trading: {}", execution.enable_paper_trading);
+            info!("  Max position size: ${}", execution.max_position_size);
+            info!("  Log level: {}", monitoring.log_level);
+            
+            Ok(AppConfig {
+                execution,
+                monitoring,
+                exchanges,
+            })
         }
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
             info!("Config file not found at {}, using default configuration", config_path);

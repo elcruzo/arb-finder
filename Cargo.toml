@@ -25,6 +25,7 @@ members = [
     "crates/strategy",
     "crates/execution",
     "crates/monitoring",
+    "crates/ml",
     "adapters/binance",
     "adapters/coinbase", 
     "adapters/kraken",
@@ -95,6 +96,7 @@ arbfinder-orderbook = { path = "crates/orderbook" }
 arbfinder-strategy = { path = "crates/strategy" }
 arbfinder-execution = { path = "crates/execution" }
 arbfinder-monitoring = { path = "crates/monitoring" }
+arbfinder-ml = { path = "crates/ml" }
 
 # Exchange adapters
 arbfinder-binance = { path = "adapters/binance" }

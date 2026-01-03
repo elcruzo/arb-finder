@@ -1,8 +1,6 @@
 use std::sync::Arc;
 use async_trait::async_trait;
-use rust_decimal::Decimal;
 use arbfinder_core::prelude::*;
-use arbfinder_exchange::prelude::*;
 use arbfinder_orderbook::FastOrderBook;
 
 pub mod simple;

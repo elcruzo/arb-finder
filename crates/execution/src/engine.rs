@@ -3,14 +3,13 @@ use std::sync::Arc;
 use tokio::sync::{RwLock, mpsc, Mutex};
 use tokio::time::{Duration, Instant};
 use rust_decimal::Decimal;
-use tracing::{info, warn, error};
+use tracing::{info, warn};
 
 use arbfinder_core::prelude::*;
 use arbfinder_exchange::prelude::*;
-use arbfinder_orderbook::FastOrderBook;
 use arbfinder_strategy::prelude::*;
 
-use crate::{ExecutionConfig, ExecutionEvent, TradingSignal, Portfolio, RiskManager};
+use crate::{ExecutionConfig, ExecutionEvent, Portfolio, RiskManager};
 
 pub struct ExecutionEngine {
     config: ExecutionConfig,

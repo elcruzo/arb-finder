@@ -12,23 +12,25 @@ use arbfinder_execution::prelude::*;
 use std::collections::HashMap;
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
-use tokio::time::{sleep, Duration};
 
 /// Helper to create mock orderbooks with configurable spreads
 fn create_mock_orderbooks() -> HashMap<VenueId, OrderBook> {
     let mut books = HashMap::new();
     
     // Binance: Lower prices (good for buying)
+    // For profitable arb: need spread > total fees (Binance 0.1% + Coinbase 0.5% = 0.6%)
+    // So spread needs to be at least 0.6% + min threshold
     let symbol = Symbol::new("BTC", "USDT");
     let mut binance_book = OrderBook::new(symbol.clone());
     binance_book.update_bid(dec!(50000), dec!(1.0));
     binance_book.update_ask(dec!(50010), dec!(1.5)); // Ask at 50010
     books.insert(VenueId::Binance, binance_book);
     
-    // Coinbase: Higher prices (good for selling)
+    // Coinbase: Higher prices (good for selling)  
+    // Need bid at least 50010 * 1.007 = 50360 for 10bps profit after 60bps fees
     let mut coinbase_book = OrderBook::new(symbol.clone());
-    coinbase_book.update_bid(dec!(50120), dec!(1.2)); // Bid at 50120 - good arb!
-    coinbase_book.update_ask(dec!(50130), dec!(1.0));
+    coinbase_book.update_bid(dec!(50400), dec!(1.2)); // Bid at 50400 - ~0.78% spread
+    coinbase_book.update_ask(dec!(50430), dec!(1.0));
     books.insert(VenueId::Coinbase, coinbase_book);
     
     // Kraken: Medium prices
@@ -77,11 +79,13 @@ async fn test_end_to_end_arbitrage_detection() {
              best_opp.estimated_profit);
     println!("Max Volume: {} BTC", best_opp.max_volume);
     
-    // Verify the opportunity makes sense
-    assert_eq!(best_opp.buy_venue, VenueId::Binance);
-    assert_eq!(best_opp.sell_venue, VenueId::Coinbase);
-    assert!(best_opp.profit_percentage > Decimal::ZERO);
-    assert!(best_opp.estimated_profit > Decimal::ZERO);
+    // Verify the opportunity makes sense (buy on Binance at 50010, sell on Coinbase at 50400)
+    assert_eq!(best_opp.buy_venue, VenueId::Binance, "Should buy on Binance (lowest ask)");
+    assert_eq!(best_opp.sell_venue, VenueId::Coinbase, "Should sell on Coinbase (highest bid)");
+    assert_eq!(best_opp.buy_price, dec!(50010), "Buy price should be 50010");
+    assert_eq!(best_opp.sell_price, dec!(50400), "Sell price should be 50400");
+    assert!(best_opp.profit_percentage > Decimal::ZERO, "Net profit should be positive after fees");
+    assert!(best_opp.estimated_profit > Decimal::ZERO, "Estimated profit should be positive");
 }
 
 #[tokio::test]

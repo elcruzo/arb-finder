@@ -5,7 +5,6 @@ use serde::{Deserialize, Serialize};
 use chrono::{DateTime, Utc};
 use tracing::{info, warn, error};
 
-use arbfinder_core::prelude::*;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HealthStatus {

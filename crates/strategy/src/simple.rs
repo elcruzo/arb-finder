@@ -2,10 +2,9 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use async_trait::async_trait;
 use rust_decimal::Decimal;
-use tracing::{info, warn};
+use tracing::info;
 
 use arbfinder_core::prelude::*;
-use arbfinder_exchange::prelude::*;
 use arbfinder_orderbook::FastOrderBook;
 use crate::Strategy;
 
